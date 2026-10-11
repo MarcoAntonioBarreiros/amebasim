@@ -57,6 +57,7 @@
     contractileVacuole: true, // protistas de água doce têm; leucócitos não
     nucleusRadius: 10,
     nucleusPad: 0,       // margem extra entre o núcleo e a membrana (núcleo lobado ocupa mais que o raio)
+    nucleusRear: 0,      // 0–1: quanto o núcleo fica atrás do centro em vez de seguir a fonte (leucócitos)
     crystalFrac: 0.14,   // cristais bipiramidais (próprios de Amoeba proteus)
     vacuoleFrac: 0.035,  // vacúolos / lisossomos
     flowSpeed: 1.0,      // escala do fluxo do endoplasma
@@ -784,6 +785,16 @@
             tvx += lx / ll * f - ne.nx * f * 0.3; tvy += ly / ll * f - ne.ny * f * 0.3;
           }
         }
+        if (p.type === 'nucleus' && P.nucleusRear > 0 && rearPt) {
+          // leucócitos: o núcleo é arrastado atrás do centro (entre o centro e o uroide),
+          // não é levado pela fonte até a ponta do braço
+          const gx = c.x + (rearPt.x - c.x) * 0.3, gy = c.y + (rearPt.y - c.y) * 0.3;
+          let ux = (gx - p.x) * 0.02, uy = (gy - p.y) * 0.02;
+          const um = Math.hypot(ux, uy), cap2 = Math.max(0.3, U * 0.6);
+          if (um > cap2) { ux *= cap2 / um; uy *= cap2 / um; }
+          const w = P.nucleusRear;
+          tvx = tvx * (1 - w) + ux * w; tvy = tvy * (1 - w) + uy * w;
+        }
         const relax = p.gel > 0.5 ? 0.35 : p.type === 'nucleus' ? 0.06 : 0.14;
         p.vx += (tvx - p.vx) * relax; p.vy += (tvy - p.vy) * relax;
         p.x += p.vx; p.y += p.vy;
@@ -844,9 +855,27 @@
       for (const p of this.particles) {
         this.nearestEdge(p.x, p.y, ne);
         const inside = this.pointInside(p.x, p.y);
-        const inset = p.r + 0.8 + P.capDepth * ne.tip * ne.tip * ne.tip + (p.type === 'nucleus' ? 4 + P.nucleusPad : 0);
-        if (!inside || ne.d < inset) {
-          p.x = ne.px - ne.nx * inset; p.y = ne.py - ne.ny * inset;
+        const isNuc = p.type === 'nucleus';
+        const inset = p.r + 0.8 + P.capDepth * ne.tip * ne.tip * ne.tip + (isNuc ? 4 + P.nucleusPad : 0);
+        if (isNuc && inside) {
+          // núcleo: empurrado para dentro aos poucos. Se a célula é mais estreita que a margem,
+          // os dois lados empurram e ele se acomoda no meio, sem saltar de um lado para o outro.
+          if (ne.d < inset) {
+            const k = 0.12;
+            p.x += (ne.px - ne.nx * inset - p.x) * k; p.y += (ne.py - ne.ny * inset - p.y) * k;
+            const vn = p.vx * ne.nx + p.vy * ne.ny;
+            if (vn > 0) { p.vx -= vn * ne.nx; p.vy -= vn * ne.ny; }
+          }
+        } else if (isNuc) {
+          // núcleo fora da célula (membrana passou por cima num passo rápido): volta depressa, mas
+          // sem teletransporte; o desenho é recortado pela membrana, então não aparece do lado de fora
+          const ins = Math.min(inset, p.r * 0.6 + 2), k = 0.4;
+          p.x += (ne.px - ne.nx * ins - p.x) * k; p.y += (ne.py - ne.ny * ins - p.y) * k;
+          const vn = p.vx * ne.nx + p.vy * ne.ny;
+          if (vn > 0) { p.vx -= vn * ne.nx; p.vy -= vn * ne.ny; }
+        } else if (!inside || ne.d < inset) {
+          const ins = inset;
+          p.x = ne.px - ne.nx * ins; p.y = ne.py - ne.ny * ins;
           const vn = p.vx * ne.nx + p.vy * ne.ny;
           if (vn > 0) { p.vx -= vn * ne.nx; p.vy -= vn * ne.ny; }
         }

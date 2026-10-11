@@ -306,10 +306,10 @@ pre#json {
             core: { radius: 60, particles: 380, contractileVacuole: true, nucleusRadius: 10, crystalFrac: .14, vacuoleFrac: .035, nodeSpacing: 8, minThickness: 28, capDepth: 8, ectoThickness: 8 },
             note: 'Ameba de vida livre do solo: vacúolo contrátil, cristais bipiramidais, pseudópodes que ramificam e tateiam.' },
     macrofago: { sl: { contraction: .12, adhesion: .85, gelation: .45, flowSpeed: .6, chemotaxis: .6, pseudopodRate: .65, podW: .75 },
-            core: { radius: 63, particles: 330, contractileVacuole: false, nucleusRadius: 24, crystalFrac: 0, vacuoleFrac: .06, nodeSpacing: 8, minThickness: 28, capDepth: 8, ectoThickness: 8 },
+            core: { radius: 63, particles: 330, contractileVacuole: false, nucleusRadius: 24, nucleusRear: .5, crystalFrac: 0, vacuoleFrac: .06, nodeSpacing: 8, minThickness: 28, capDepth: 8, ectoThickness: 8 },
             note: 'Macrófago (~21 µm): grande, lento e muito aderente; núcleo em feijão; muitos fagolisossomos.' },
     neutrofilo: { sl: { contraction: .95, adhesion: .5, gelation: .6, flowSpeed: 1.4, chemotaxis: .85, pseudopodRate: .25, podW: .3 },
-            core: { radius: 36, particles: 170, contractileVacuole: false, nucleusRadius: 12, nucleusPad: 7, crystalFrac: 0, vacuoleFrac: .01, nodeSpacing: 6, minThickness: 18, capDepth: 6, ectoThickness: 5 },
+            core: { radius: 36, particles: 170, contractileVacuole: false, nucleusRadius: 12, nucleusPad: 7, nucleusRear: .7, crystalFrac: 0, vacuoleFrac: .01, nodeSpacing: 6, minThickness: 18, capDepth: 6, ectoThickness: 5 },
             note: 'Neutrófilo (~12 µm): menor e rápido, polarizado; núcleo multilobado. É a cena do filme clássico de David Rogers, perseguindo um estafilococo entre hemácias.' }
   };
   let scen = 'solo', cellType = 'macrofago', urlScen = false;
@@ -720,7 +720,10 @@ pre#json {
         const hd = am.metrics.heading || 0;
         if (p.ori === undefined) p.ori = hd;
         p.ori += Math.atan2(Math.sin(hd - p.ori), Math.cos(hd - p.ori)) * 0.03;
-        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(cellType === 'neutrofilo' ? p.ori : p.ori + p.spin * 0.3);
+        // posição de desenho suavizada: o núcleo grande nunca "salta" de um quadro para o outro
+        if (p.sx === undefined || Math.hypot(p.x - p.sx, p.y - p.sy) > 40) { p.sx = p.x; p.sy = p.y; }
+        p.sx += (p.x - p.sx) * 0.35; p.sy += (p.y - p.sy) * 0.35;
+        ctx.save(); ctx.translate(p.sx, p.sy); ctx.rotate(cellType === 'neutrofilo' ? p.ori : p.ori + p.spin * 0.3);
         if (cellType === 'neutrofilo') {
           // núcleo multilobado: cromatina densa (opaca, roxo-escura na coloração); 3 lobos de ~3 µm
           // unidos por filamentos finos, desenhados por baixo dos lobos
