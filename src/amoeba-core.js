@@ -56,6 +56,7 @@
     minThickness: 28,    // espessura mínima de qualquer trecho da célula (px)
     contractileVacuole: true, // protistas de água doce têm; leucócitos não
     nucleusRadius: 10,
+    nucleusPad: 0,       // margem extra entre o núcleo e a membrana (núcleo lobado ocupa mais que o raio)
     crystalFrac: 0.14,   // cristais bipiramidais (próprios de Amoeba proteus)
     vacuoleFrac: 0.035,  // vacúolos / lisossomos
     flowSpeed: 1.0,      // escala do fluxo do endoplasma
@@ -816,7 +817,7 @@
       }
       for (let i = 0; i < P.length; i++) {
         const p = P[i];
-        const reach = p.type === 'nucleus' ? 2 : 1;
+        const reach = p.type === 'nucleus' ? Math.ceil((p.r + 3) / 10) : 1;   // núcleo grande procura vizinhos mais longe
         const gx = (p.x / cs) | 0, gy = (p.y / cs) | 0;
         for (let ox = -reach; ox <= reach; ox++) for (let oy = -reach; oy <= reach; oy++) {
           const a = grid.get(((gx + ox) * 73856093) ^ ((gy + oy) * 19349663));
@@ -843,7 +844,7 @@
       for (const p of this.particles) {
         this.nearestEdge(p.x, p.y, ne);
         const inside = this.pointInside(p.x, p.y);
-        const inset = p.r + 0.8 + P.capDepth * ne.tip * ne.tip * ne.tip + (p.type === 'nucleus' ? 4 : 0);
+        const inset = p.r + 0.8 + P.capDepth * ne.tip * ne.tip * ne.tip + (p.type === 'nucleus' ? 4 + P.nucleusPad : 0);
         if (!inside || ne.d < inset) {
           p.x = ne.px - ne.nx * inset; p.y = ne.py - ne.ny * inset;
           const vn = p.vx * ne.nx + p.vy * ne.ny;
