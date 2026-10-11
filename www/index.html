@@ -179,6 +179,7 @@ pre#json {
   border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; overflow-x: auto; white-space: pre; user-select: all;
 }
 .note { font-size: 0.76rem; color: var(--muted); margin: 0; }
+[hidden] { display: none !important; }
 .howto { margin: 0; padding-left: 1.1em; font-size: 0.8rem; color: var(--muted); display: grid; gap: 3px; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 </style>
@@ -198,6 +199,19 @@ pre#json {
     </div>
     <div class="sheet-body">
       <section class="sec">
+        <h2>Cenário</h2>
+        <div class="seg" role="group" aria-label="Cenário">
+          <button type="button" id="scSolo" data-sc="solo" aria-pressed="true">Solo · ameba</button>
+          <button type="button" id="scSangue" data-sc="sangue" aria-pressed="false">Sangue · leucócito</button>
+        </div>
+        <div class="seg" id="cellRow" role="group" aria-label="Tipo celular" hidden>
+          <button type="button" id="ctMacro" data-ct="macrofago" aria-pressed="true">Macrófago</button>
+          <button type="button" id="ctNeutro" data-ct="neutrofilo" aria-pressed="false">Neutrófilo</button>
+        </div>
+        <p class="note" id="scNote"></p>
+      </section>
+
+      <section class="sec">
         <h2>Simulação</h2>
         <div class="seg mono" role="group" aria-label="Velocidade da simulação">
           <button type="button" id="sp1" data-sp="1" aria-pressed="false">1×</button>
@@ -213,7 +227,7 @@ pre#json {
           <button class="btn" id="btnClearSrc" type="button">Remover micropipeta</button>
         </div>
         <ul class="howto">
-          <li>Toque no campo: coloca uma micropipeta com atraente. O sinal se esgota sozinho.</li>
+          <li>Toque no campo: coloca uma micropipeta com atraente (folato no solo, fMLP no sangue). O sinal se esgota sozinho.</li>
           <li>Pinça com dois dedos: zoom. A câmera acompanha a ameba.</li>
           <li>Botão voltar ou botão no canto: abre este menu.</li>
           <li id="howtoSaver" hidden>Proteção de tela: em Configurações → Tela → Proteção de tela, escolha Ameba Sol-Gel. Ela usa a iluminação e os parâmetros escolhidos aqui.</li>
@@ -363,6 +377,10 @@ pre#json {
     ectoThickness: 8,    // espessura do tubo ectoplasmático (px)
     capDepth: 8,         // profundidade da calota hialina (px)
     minThickness: 28,    // espessura mínima de qualquer trecho da célula (px)
+    contractileVacuole: true, // protistas de água doce têm; leucócitos não
+    nucleusRadius: 10,
+    crystalFrac: 0.14,   // cristais bipiramidais (próprios de Amoeba proteus)
+    vacuoleFrac: 0.035,  // vacúolos / lisossomos
     flowSpeed: 1.0,      // escala do fluxo do endoplasma
     iterations: 6,       // iterações das restrições por passo (VIT na DarwinRizo)
     maxNodes: 220,
@@ -419,10 +437,10 @@ pre#json {
           gel: gelBias != null ? gelBias : (edge < P.ectoThickness + r ? 1 : 0),
           phase: rng(), digest: 0, digestMax: 0, spin: rng() * TAU });
       };
-      put('nucleus', 10, 0);
-      put('cv', 3, 0);
-      const nVac = Math.round(P.particles * 0.035);
-      const nCry = Math.round(P.particles * 0.14);
+      put('nucleus', P.nucleusRadius, 0);
+      if (P.contractileVacuole) put('cv', 3, 0);
+      const nVac = Math.round(P.particles * P.vacuoleFrac);
+      const nCry = Math.round(P.particles * P.crystalFrac);
       for (let i = 0; i < nVac; i++) put('vacuole', 3 + rng() * 2.2);
       for (let i = 0; i < nCry; i++) put('crystal', 1.5 + rng() * 0.6);
       const rest = Math.max(0, P.particles - nVac - nCry);
@@ -933,12 +951,27 @@ pre#json {
       for (const nd of N) nd.hit = false;
       if (!env) return;
       const B = env.bounds;
+      // obstáculo móvel (ex.: hemácia) que foi parar dentro da célula é expulso pela borda mais próxima;
+      // obstáculo fixo (grão) nessa situação é ignorado, para nunca virar âncora
+      if (env.obstacles) {
+        const ne = {};
+        for (const o of env.obstacles) if (o.mobile && this.pointInside(o.x, o.y)) {
+          this.nearestEdge(o.x, o.y, ne);
+          o.x = ne.px + ne.nx * (o.r + 2); o.y = ne.py + ne.ny * (o.r + 2);
+        }
+      }
       const obs = env.obstacles ? env.obstacles.filter(o => !this.pointInside(o.x, o.y)) : null;
       this.metrics.enclosed = env.obstacles ? env.obstacles.length - obs.length : 0;
       if (obs && obs.length) for (let pass = 0; pass < 2; pass++) {
         for (const nd of N) for (const o of obs) {
           const dx = nd.x - o.x, dy = nd.y - o.y, d = Math.hypot(dx, dy), m = o.r + 1;
-          if (d < m && d > 1e-6) { nd.x = o.x + dx / d * m; nd.y = o.y + dy / d * m; nd.hit = true; }
+          if (d < m && d > 1e-6) {
+            // obstáculo móvel divide o deslocamento com a membrana (a célula empurra a hemácia)
+            const push = m - d, k = o.mobile ? (o.give || 0.6) : 0;
+            nd.x += dx / d * push * (1 - k); nd.y += dy / d * push * (1 - k);
+            o.x -= dx / d * push * k; o.y -= dy / d * push * k;
+            nd.hit = true;
+          }
         }
         // segmento que corta o grão: empurra as duas pontas para fora pelo ponto mais próximo
         for (let i = 0; i < n; i++) {
@@ -949,9 +982,10 @@ pre#json {
             if (d >= m) continue;
             let ux, uy;
             if (d > 1e-6) { ux = dx / d; uy = dy / d; } else { const l = Math.sqrt(l2); ux = -ey / l; uy = ex / l; }
-            const push = m - d;
-            a.x += ux * push * (1 - t); a.y += uy * push * (1 - t);
-            b.x += ux * push * t; b.y += uy * push * t;
+            const push = m - d, k = o.mobile ? (o.give || 0.6) : 0;
+            a.x += ux * push * (1 - t) * (1 - k); a.y += uy * push * (1 - t) * (1 - k);
+            b.x += ux * push * t * (1 - k); b.y += uy * push * t * (1 - k);
+            o.x -= ux * push * k; o.y -= uy * push * k;
             a.hit = b.hit = true;
           }
         }
@@ -1189,19 +1223,44 @@ pre#json {
   let preyOn = true, grainOn = false;
   const cam = { x: 0, y: 0, s: 1, base: 1 };
   let zoom = 1;
+
+  /* ── cenário: solo (ameba de vida livre) ou sangue (macrófago / neutrófilo) ──
+     Escala do cenário sangue: ~6 px/µm (hemácia 7,5 µm, neutrófilo ~12 µm, macrófago ~21 µm).
+     O neutrófilo é bem mais rápido que o macrófago; leucócitos não têm vacúolo contrátil
+     nem os cristais bipiramidais de Amoeba proteus. */
+  const SCEN = {
+    solo: { sl: { contraction: .6, adhesion: .6, gelation: .5, flowSpeed: 1, chemotaxis: .6, pseudopodRate: .5, podW: .5 },
+            core: { radius: 60, particles: 380, contractileVacuole: true, nucleusRadius: 10, crystalFrac: .14, vacuoleFrac: .035, nodeSpacing: 8, minThickness: 28, capDepth: 8, ectoThickness: 8 },
+            note: 'Ameba de vida livre do solo: vacúolo contrátil, cristais bipiramidais, pseudópodes que ramificam e tateiam.' },
+    macrofago: { sl: { contraction: .12, adhesion: .85, gelation: .45, flowSpeed: .6, chemotaxis: .6, pseudopodRate: .65, podW: .75 },
+            core: { radius: 63, particles: 330, contractileVacuole: false, nucleusRadius: 13, crystalFrac: 0, vacuoleFrac: .06, nodeSpacing: 8, minThickness: 28, capDepth: 8, ectoThickness: 8 },
+            note: 'Macrófago (~21 µm): grande, lento e muito aderente; núcleo em feijão; muitos fagolisossomos.' },
+    neutrofilo: { sl: { contraction: .95, adhesion: .5, gelation: .6, flowSpeed: 1.4, chemotaxis: .85, pseudopodRate: .25, podW: .3 },
+            core: { radius: 36, particles: 170, contractileVacuole: false, nucleusRadius: 8, crystalFrac: 0, vacuoleFrac: .01, nodeSpacing: 6, minThickness: 18, capDepth: 6, ectoThickness: 5 },
+            note: 'Neutrófilo (~12 µm): menor e rápido, polarizado; núcleo multilobado. É a cena do filme clássico de David Rogers, perseguindo um estafilococo entre hemácias.' }
+  };
+  let scen = 'solo', cellType = 'macrofago', urlScen = false;
+  try {
+    const q = new URLSearchParams(location.search);
+    if (q.get('cenario') === 'sangue') { scen = 'sangue'; urlScen = true; }
+    if (q.get('celula') === 'neutrofilo' || q.get('celula') === 'macrofago') { cellType = q.get('celula'); urlScen = true; }
+  } catch (e) {}
+  const blood = () => scen === 'sangue';
+  const cellKey = () => blood() ? cellType : 'solo';
+  const viewScale = () => am ? 60 / am.p.radius : 1;
   let W = 0, H = 0, DPR = 1;
 
   function val(id) { return parseFloat($(id).value); }
   function params() {
-    return {
+    return Object.assign({}, SCEN[cellKey()].core, {
       contraction: inhib.bleb ? 0 : val('contraction'),
       adhesion: val('adhesion'),
       gelation: inhib.cyto ? 0 : val('gelation'),
       flowSpeed: val('flowSpeed'),
       chemotaxis: val('chemotaxis'),
       pseudopodRate: val('pseudopodRate'),
-      podWidth: +(10 + 20 * val('podW')).toFixed(1)
-    };
+      podWidth: +(10 + 20 * val('podW')).toFixed(1) * (SCEN[cellKey()].core.radius / 60)
+    });
   }
 
   /* ── campo de grãos determinístico (infinito) ── */
@@ -1220,18 +1279,66 @@ pre#json {
   }
   function inGrain(x, y, pad) {
     if (!grainOn) return false;
+    if (blood()) { for (const o of rbcs) if (Math.hypot(x - o.x, y - o.y) < o.r + pad) return true; return false; }
     for (const g of grainsNear(x, y, 60)) if (Math.hypot(x - g.x, y - g.y) < g.r + pad) return true;
     return false;
   }
 
-  /* ── bactérias em microcolônias ── */
+  /* ── hemácias: discos bicôncavos leves, que a célula empurra ao passar ── */
+  const RBC_R = 22;
+  let rbcs = [];
+  function addRBC(x, y) {
+    for (const o of rbcs) if (Math.hypot(o.x - x, o.y - y) < RBC_R * 2.1) return false;
+    rbcs.push({ x, y, r: RBC_R, mobile: true, give: 0.6, rot: rnd() * Math.PI, ecc: 0.88 + rnd() * 0.12 });
+    return true;
+  }
+  function seedRBC(cx, cy) {
+    rbcs = []; let tries = 0;
+    while (rbcs.length < 330 && tries++ < 8000) { const a = rnd() * Math.PI * 2, d = 120 + Math.sqrt(rnd()) * 820; addRBC(cx + Math.cos(a) * d, cy + Math.sin(a) * d); }
+  }
+  function manageRBC() {
+    if (!blood() || !grainOn) return;
+    const c = am.metrics;
+    rbcs = rbcs.filter(o => Math.hypot(o.x - c.cx, o.y - c.cy) < 1150);
+    let near = 0; for (const o of rbcs) if (Math.hypot(o.x - c.cx, o.y - c.cy) < 820) near++;
+    for (let k = 0; k < 10 && near < 310; k++) {
+      const a = Math.atan2(c.vy, c.vx) + (rnd() - 0.5) * 3.2, d = 720 + rnd() * 320;
+      if (addRBC(c.cx + Math.cos(a) * d, c.cy + Math.sin(a) * d)) near++;
+    }
+    // repulsão entre hemácias (grade espacial) e leve agitação browniana
+    const cs = 50, grid = new Map(), key = (i, j) => i * 100003 + j;
+    rbcs.forEach((o, i) => { const k = key(Math.floor(o.x / cs), Math.floor(o.y / cs)); let L = grid.get(k); if (!L) grid.set(k, L = []); L.push(i); });
+    for (let i = 0; i < rbcs.length; i++) {
+      const A = rbcs[i]; A.x += (rnd() - 0.5) * 0.08; A.y += (rnd() - 0.5) * 0.08;
+      const gx = Math.floor(A.x / cs), gy = Math.floor(A.y / cs);
+      for (let ox = -1; ox <= 1; ox++) for (let oy = -1; oy <= 1; oy++) {
+        const L = grid.get(key(gx + ox, gy + oy)); if (!L) continue;
+        for (const j of L) {
+          if (j <= i) continue;
+          const B = rbcs[j], dx = B.x - A.x, dy = B.y - A.y, d2 = dx * dx + dy * dy, m = A.r + B.r;
+          if (d2 >= m * m || d2 < 1e-6) continue;
+          const d = Math.sqrt(d2), o = (m - d) / d * 0.25;
+          A.x -= dx * o; A.y -= dy * o; B.x += dx * o; B.y += dy * o;
+        }
+      }
+    }
+    // bactérias não ficam por baixo das hemácias (são empurradas junto)
+    if (preyOn) for (const q of prey) {
+      if (!q.alive) continue;
+      const L = grid.get(key(Math.floor(q.x / cs), Math.floor(q.y / cs)));
+      if (L) for (const j of L) { const o = rbcs[j], dx = q.x - o.x, dy = q.y - o.y, d = Math.hypot(dx, dy); if (d < o.r + 3 && d > 1e-6) { q.x = o.x + dx / d * (o.r + 3); q.y = o.y + dy / d * (o.r + 3); } }
+    }
+  }
+
+  /* ── bactérias em microcolônias (solo) ou cachos de estafilococos (sangue) ── */
   let rnd = Amoeba.mulberry32(99);
   function addColony(cx, cy) {
     const n = 3 + Math.floor(rnd() * 7);
     for (let i = 0; i < n; i++) {
-      const x = cx + (rnd() - 0.5) * 34, y = cy + (rnd() - 0.5) * 34;
+      const spread = blood() ? 14 : 34;
+      const x = cx + (rnd() - 0.5) * spread, y = cy + (rnd() - 0.5) * spread;
       if (inGrain(x, y, 6)) continue;
-      prey.push({ x, y, ang: rnd() * Math.PI * 2, len: 5 + rnd() * 3, alive: true, ph: rnd() * 6 });
+      prey.push({ x, y, ang: rnd() * Math.PI * 2, len: 5 + rnd() * 3, alive: true, ph: rnd() * 6, kind: blood() ? 'coccus' : 'rod' });
     }
   }
   function seedPrey(cx, cy) {
@@ -1250,13 +1357,16 @@ pre#json {
       const a = Math.atan2(c.vy, c.vx) + (rnd() - 0.5) * 2.6, d = 480 + rnd() * 300;
       addColony(c.cx + Math.cos(a) * d, c.cy + Math.sin(a) * d);
     }
-    for (const q of prey) { q.x += (rnd() - 0.5) * 0.25; q.y += (rnd() - 0.5) * 0.25; q.ang += (rnd() - 0.5) * 0.04; }
+    const jit = blood() ? 0.08 : 0.25;   // estafilococos não são móveis
+    for (const q of prey) { q.x += (rnd() - 0.5) * jit; q.y += (rnd() - 0.5) * jit; q.ang += (rnd() - 0.5) * 0.04; }
   }
 
   function reset() {
     rnd = Amoeba.mulberry32(seed * 31 + 5);
     am = new Amoeba(0, 0, Object.assign({ seed }, params()));
     source = null; fx = [];
+    rbcs = [];
+    if (blood()) seedRBC(0, 0);
     seedPrey(0, 0);
     cam.x = 0; cam.y = 0;
     for (let i = 0; i < 260; i++) simStep();      // abre já polarizada
@@ -1312,11 +1422,12 @@ pre#json {
     const env = {
       gradient: (preyOn || source) ? gradient : null,
       prey: preyOn ? prey : null,
-      obstacles: grainOn ? grainsNear(c.cx || 0, c.cy || 0, 260) : null,
-      onDigest: p => fx.push({ x: p.x, y: p.y, life: 1 })
+      obstacles: grainOn ? (blood() ? rbcs.filter(o => Math.abs(o.x - (c.cx || 0)) < 260 && Math.abs(o.y - (c.cy || 0)) < 260) : grainsNear(c.cx || 0, c.cy || 0, 260)) : null,
+      onDigest: p => { if (!blood()) fx.push({ x: p.x, y: p.y, life: 1 }); }
     };
     am.step(env);
     managePrey();
+    manageRBC();
     ageSource();
   }
 
@@ -1334,7 +1445,21 @@ pre#json {
     let h = hex.replace('#', ''); if (h.length === 3) h = h.split('').map(c => c + c).join('');
     const n = parseInt(h, 16); return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
   }
-  let sprSol, sprGel, sprNeu, texPat, sprAttr;
+  let sprSol, sprGel, sprNeu, texPat, sprAttr, sprRBC;
+  // hemácia: disco bicôncavo — borda espessa e centro claro (palidez central); em campo escuro, anel brilhante
+  function makeRBCSprite() {
+    const c = document.createElement('canvas'); c.width = c.height = 96;
+    const g = c.getContext('2d'), gr = g.createRadialGradient(48, 48, 0, 48, 48, 46);
+    if (T.dark) {
+      gr.addColorStop(0, 'rgba(60,16,16,0.4)'); gr.addColorStop(0.55, 'rgba(120,36,32,0.55)');
+      gr.addColorStop(0.86, 'rgba(225,110,98,0.8)'); gr.addColorStop(0.96, 'rgba(255,175,165,0.85)'); gr.addColorStop(0.99, 'rgba(255,175,165,0.4)'); gr.addColorStop(1, 'rgba(255,175,165,0)');
+    } else {
+      gr.addColorStop(0, 'rgba(242,196,186,0.6)'); gr.addColorStop(0.42, 'rgba(226,150,138,0.72)');
+      gr.addColorStop(0.78, 'rgba(206,104,94,0.85)'); gr.addColorStop(0.95, 'rgba(186,78,70,0.9)'); gr.addColorStop(0.985, 'rgba(160,60,55,0.75)'); gr.addColorStop(1, 'rgba(160,60,55,0)');
+    }
+    g.fillStyle = gr; g.beginPath(); g.arc(48, 48, 46, 0, 7); g.fill();
+    return c;
+  }
   function sprite(col, a) {
     const s = document.createElement('canvas'); s.width = s.height = 64;
     const g = s.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
@@ -1345,7 +1470,7 @@ pre#json {
     sprSol = sprite(T.sol, T.dark ? 0.22 : 0.2);
     sprGel = sprite(T.gel, T.dark ? 0.16 : 0.14);
     sprNeu = sprite(T.dark ? '#cfd8dd' : '#5d6660', T.dark ? 0.1 : 0.09);
-    sprAttr = null;
+    sprAttr = null; sprRBC = null;
   }
   function makeTexture() {
     const s = document.createElement('canvas'); s.width = s.height = 256;
@@ -1366,7 +1491,7 @@ pre#json {
     DPR = Math.min(2, window.devicePixelRatio || 1);
     W = r.width; H = r.height;
     cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
-    cam.base = Math.max(0.8, Math.min(2.1, Math.min(W, H) / 360)); cam.s = cam.base * zoom;
+    cam.base = Math.max(0.8, Math.min(2.1, Math.min(W, H) / 360)) * viewScale(); cam.s = cam.base * zoom;
   }
   new ResizeObserver(resize).observe(cv);
 
@@ -1380,7 +1505,7 @@ pre#json {
   function draw() {
     const s = cam.s;
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-    ctx.fillStyle = T.field; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = blood() ? (T.dark ? '#0d0809' : '#efe5e0') : T.field; ctx.fillRect(0, 0, W, H);
     // transforma para o mundo (o substrato fica parado; é ele que denuncia o avanço)
     ctx.setTransform(DPR * s, 0, 0, DPR * s, DPR * (W / 2 - cam.x * s), DPR * (H / 2 - cam.y * s));
     const vx0 = cam.x - W / 2 / s, vy0 = cam.y - H / 2 / s, vx1 = cam.x + W / 2 / s, vy1 = cam.y + H / 2 / s;
@@ -1397,8 +1522,18 @@ pre#json {
       ctx.fillStyle = rgba(T.accent, 0.25 + 0.75 * k); ctx.beginPath(); ctx.arc(source.x, source.y, 3, 0, 7); ctx.fill();
     }
 
+    // hemácias
+    if (grainOn && blood()) {
+      if (!sprRBC) sprRBC = makeRBCSprite();
+      for (const o of rbcs) {
+        if (o.x < vx0 - 30 || o.x > vx1 + 30 || o.y < vy0 - 30 || o.y > vy1 + 30) continue;
+        ctx.save(); ctx.translate(o.x, o.y); ctx.rotate(o.rot); ctx.scale(1, o.ecc);
+        ctx.drawImage(sprRBC, -o.r * 1.06, -o.r * 1.06, o.r * 2.12, o.r * 2.12);
+        ctx.restore();
+      }
+    }
     // grãos de solo
-    if (grainOn) for (const g of grainsNear(cam.x, cam.y, Math.max(vx1 - vx0, vy1 - vy0))) {
+    if (grainOn && !blood()) for (const g of grainsNear(cam.x, cam.y, Math.max(vx1 - vx0, vy1 - vy0))) {
       ctx.fillStyle = T.dark ? rgba('#7b6d58', 0.55) : rgba('#9a8a70', 0.5);
       ctx.beginPath();
       for (let i = 0; i <= 14; i++) {
@@ -1418,8 +1553,18 @@ pre#json {
         ctx.drawImage(sprAttr, q.x - R, q.y - R, R * 2, R * 2);
       }
     }
-    // bactérias
-    if (preyOn) {
+    // bactérias: cocos em cacho (Gram-positivos, roxos) no sangue
+    if (preyOn && blood()) {
+      ctx.fillStyle = T.dark ? rgba('#c7b2f5', 0.9) : rgba('#5a3d8f', 0.85);
+      ctx.beginPath();
+      for (const q of prey) {
+        if (!q.alive || q.x < vx0 - 10 || q.x > vx1 + 10 || q.y < vy0 - 10 || q.y > vy1 + 10) continue;
+        ctx.moveTo(q.x + 3.2, q.y); ctx.arc(q.x, q.y, 3.2, 0, 7);
+      }
+      ctx.fill();
+    }
+    // bactérias (bastonetes do solo)
+    if (preyOn && !blood()) {
       ctx.lineCap = 'round';
       ctx.strokeStyle = T.dark ? rgba('#c9e3a8', 0.85) : rgba('#3d5a2a', 0.8);
       ctx.lineWidth = 2.6;
@@ -1459,7 +1604,7 @@ pre#json {
     for (const p of P) {
       if (p.type === 'cv') continue;
       const spr = layers.gel ? (p.gel > 0.5 ? sprGel : sprSol) : sprNeu;
-      const r = p.type === 'nucleus' ? 22 : 11;
+      const r = p.type === 'nucleus' ? p.r * 2.2 : 11;
       ctx.drawImage(spr, p.x - r, p.y - r, r * 2, r * 2);
     }
     // inclusões
@@ -1480,6 +1625,14 @@ pre#json {
         ctx.strokeStyle = T.dark ? rgba('#dce9f2', 0.5) : rgba('#2f3a35', 0.4); ctx.lineWidth = 0.8;
         ctx.fillStyle = T.dark ? rgba('#0a1018', 0.35) : rgba('#ffffff', 0.35);
         ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 7); ctx.fill(); ctx.stroke();
+      } else if (p.type === 'food' && blood()) {
+        // fagolisossomo: o vacúolo acidifica (a cor muda) e o coco é degradado
+        const k = p.digest / p.digestMax, left = 1 - k;
+        ctx.fillStyle = T.dark ? `rgba(${90 + 110 * k},${40},${60 + 40 * k},0.45)` : `rgba(${246},${226 - 70 * k},${224 - 40 * k},0.65)`;
+        ctx.strokeStyle = rgba(T.rear, 0.4 + 0.5 * k); ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 7); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = T.dark ? rgba('#c7b2f5', 0.9 * left) : rgba('#5a3d8f', 0.85 * left);
+        ctx.beginPath(); ctx.arc(p.x, p.y, 3 * Math.max(0.3, left), 0, 7); ctx.fill();
       } else if (p.type === 'food') {
         const left = 1 - p.digest / p.digestMax;
         ctx.fillStyle = T.dark ? rgba('#2a1e10', 0.45) : rgba('#f6efe0', 0.6);
@@ -1489,6 +1642,28 @@ pre#json {
         ctx.lineWidth = 2.2 * Math.max(0.4, left); ctx.lineCap = 'round';
         const dx = Math.cos(p.spin) * 2.6 * left, dy = Math.sin(p.spin) * 2.6 * left;
         ctx.beginPath(); ctx.moveTo(p.x - dx, p.y - dy); ctx.lineTo(p.x + dx, p.y + dy); ctx.stroke();
+      } else if (p.type === 'nucleus' && blood()) {
+        ctx.fillStyle = T.dark ? rgba('#8f86c8', 0.38) : rgba('#5d4f9a', 0.32);
+        ctx.strokeStyle = T.dark ? rgba('#d9d2f5', 0.75) : rgba('#3b2f6b', 0.65); ctx.lineWidth = 1.1;
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.spin);
+        if (cellType === 'neutrofilo') {
+          // núcleo multilobado: 3 lobos unidos por filamentos finos
+          const L = [[-1.15, 0.45], [0, -0.2], [1.15, 0.45]].map(([a, b]) => [a * p.r, b * p.r]);
+          ctx.beginPath(); ctx.moveTo(L[0][0], L[0][1]); ctx.lineTo(L[1][0], L[1][1]); ctx.lineTo(L[2][0], L[2][1]); ctx.stroke();
+          for (const [x, y] of L) { ctx.beginPath(); ctx.ellipse(x, y, p.r * 0.62, p.r * 0.5, 0, 0, 7); ctx.fill(); ctx.stroke(); }
+        } else {
+          // núcleo em feijão (reniforme)
+          ctx.beginPath();
+          for (let i = 0; i <= 32; i++) {
+            const t = i / 32 * Math.PI * 2;
+            let d = Math.atan2(Math.sin(t - Math.PI / 2), Math.cos(t - Math.PI / 2));
+            const k = 1 - 0.34 * Math.exp(-((d / 0.6) ** 2));
+            const x = Math.cos(t) * p.r * 1.1 * k, y = Math.sin(t) * p.r * 0.8 * k;
+            i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+          }
+          ctx.closePath(); ctx.fill(); ctx.stroke();
+        }
+        ctx.restore();
       } else if (p.type === 'nucleus') {
         ctx.fillStyle = T.dark ? rgba('#9db2c6', 0.32) : rgba('#6d7c86', 0.28);
         ctx.strokeStyle = T.dark ? rgba('#d6e4f0', 0.7) : rgba('#33403a', 0.6); ctx.lineWidth = 1.2;
@@ -1562,7 +1737,7 @@ pre#json {
     $('rClutch').innerHTML = fmt(m.clutch * 100, 0) + '<small>%</small>';
     $('rAnch').textContent = m.anchors;
     $('rPods').textContent = am.pods.length;
-    $('rCv').textContent = am.counts.systoles;
+    $('rCv').textContent = blood() ? '—' : am.counts.systoles;
     $('rEng').textContent = am.counts.engulfed + ' · ' + am.counts.digested;
     $('rSense').innerHTML = fmt((am.metrics.sense || 0) * 100, 0) + '<small>%</small>';
     let st, tx;
@@ -1591,7 +1766,8 @@ pre#json {
     updateJSON();
   }
   function updateJSON() {
-    const p = params(); const o = { seed };
+    const p = params(); const o = { seed, cenario: scen };
+    if (blood()) o.celula = cellType;
     for (const k in p) o[k] = p[k];
     o.inibidores = { blebistatina: inhib.bleb, citocalasinaD: inhib.cyto };
     $('json').textContent = JSON.stringify(o, null, 2);
@@ -1607,7 +1783,41 @@ pre#json {
   bindToggle('tBleb', on => { inhib.bleb = on; syncControls(); });
   bindToggle('tCyto', on => { inhib.cyto = on; syncControls(); });
   bindToggle('tPrey', on => { preyOn = on; if (on) seedPrey(am.metrics.cx, am.metrics.cy); });
-  bindToggle('tGrain', on => { grainOn = on; if (on) prey = prey.filter(q => !inGrain(q.x, q.y, 6)); });
+  bindToggle('tGrain', on => {
+    grainOn = on;
+    if (on && blood() && !rbcs.length) seedRBC(am.metrics.cx || 0, am.metrics.cy || 0);
+    if (on) prey = prey.filter(q => !inGrain(q.x, q.y, 6));
+  });
+
+  /* ── troca de cenário e de tipo celular ── */
+  const HINTS = {
+    solo: 'As bactérias liberam um atraente que se difunde no meio; cada pseudópode lê o gradiente na própria ponta. Toque no campo para colocar uma micropipeta: um sinal mais forte, que a ameba prioriza.',
+    sangue: 'Os estafilococos liberam peptídeos formilados (fMLP), lidos na ponta de cada pseudópode. Toque no campo para colocar uma micropipeta de fMLP, que a célula prioriza.'
+  };
+  function syncScenarioUI() {
+    const b = blood();
+    for (const el of document.querySelectorAll('[data-sc]')) el.setAttribute('aria-pressed', el.dataset.sc === scen ? 'true' : 'false');
+    for (const el of document.querySelectorAll('[data-ct]')) el.setAttribute('aria-pressed', el.dataset.ct === cellType ? 'true' : 'false');
+    if ($('cellRow')) $('cellRow').hidden = !b;
+    if ($('scNote')) $('scNote').textContent = SCEN[cellKey()].note;
+    const g = $('tGrain');
+    g.querySelector('strong').textContent = b ? 'Hemácias' : 'Grãos de solo';
+    g.querySelector('small').textContent = b ? 'Discos bicôncavos leves; a célula os empurra ao passar.' : 'Obstáculos minerais; a ameba contorna e se espreme entre eles.';
+    g.setAttribute('aria-pressed', grainOn ? 'true' : 'false');
+    const pr = $('tPrey');
+    pr.querySelector('strong').textContent = b ? 'Bactérias (estafilococos)' : 'Bactérias';
+    pr.querySelector('small').textContent = b ? 'Cocos em cacho. Liberam fMLP; fagocitados, são degradados no fagolisossomo.' : 'Presas em microcolônias. Liberam atraente; engolidas viram vacúolos digestivos.';
+    const h = $('hint'); if (h && !h.classList.contains('toast')) h.textContent = HINTS[scen];
+    if (h && h.classList.contains('toast')) h.textContent = b ? 'Toque para colocar uma micropipeta de fMLP · pinça para zoom · botão no canto para pausar' : 'Toque para colocar uma micropipeta · pinça para zoom · botão no canto para pausar';
+  }
+  function setScenario(sc, ct) {
+    scen = sc; if (ct) cellType = ct;
+    grainOn = blood();
+    const pr = SCEN[cellKey()].sl; for (const id in pr) $(id).value = pr[id];
+    syncScenarioUI(); syncControls(); reset(); resize();
+  }
+  for (const el of document.querySelectorAll('[data-sc]')) el.addEventListener('click', () => { if (el.dataset.sc !== scen) setScenario(el.dataset.sc); });
+  for (const el of document.querySelectorAll('[data-ct]')) el.addEventListener('click', () => { if (el.dataset.ct !== cellType || !blood()) setScenario('sangue', el.dataset.ct); });
   $('btnClearSrc').addEventListener('click', () => { source = null; });
 
   const LMAP = { lGel: 'gel', lPol: 'pol', lAnc: 'anc', lFlow: 'flow', lPod: 'pod', lAttr: 'attr' };
@@ -1700,7 +1910,7 @@ pre#json {
     const r = cv.getBoundingClientRect();
     const x = (px - r.left - W / 2) / cam.s + cam.x, y = (py - r.top - H / 2) / cam.s + cam.y;
     source = { x, y, age: 0 };
-    toast('Micropipeta colocada. O sinal se esgota sozinho.');
+    toast(blood() ? 'Micropipeta de fMLP colocada. O sinal se esgota sozinho.' : 'Micropipeta colocada. O sinal se esgota sozinho.');
   }
   cv.addEventListener('pointerdown', e => {
     try { cv.setPointerCapture(e.pointerId); } catch (_) {}
@@ -1728,7 +1938,7 @@ pre#json {
   function saveState() {
     try {
       localStorage.setItem(KEY, JSON.stringify({
-        v: Object.fromEntries(SLIDERS.map(id => [id, $(id).value])), inhib, preyOn, grainOn, layers, speed, seed,
+        v: Object.fromEntries(SLIDERS.map(id => [id, $(id).value])), inhib, preyOn, grainOn, layers, speed, seed, scen, cellType,
         theme: document.documentElement.getAttribute('data-theme')
       }));
     } catch (e) {}
@@ -1748,6 +1958,11 @@ pre#json {
       for (const b of document.querySelectorAll('.seg button[data-sp]')) b.setAttribute('aria-pressed', +b.dataset.sp === speed ? 'true' : 'false');
       seed = Math.max(1, s.seed | 0) || 7; $('seed').value = seed;
       if (s.theme === 'light' || s.theme === 'dark') document.documentElement.setAttribute('data-theme', s.theme);
+      // cenário salvo (um link com ?cenario=... tem prioridade)
+      if (!urlScen && (s.scen === 'solo' || s.scen === 'sangue')) {
+        scen = s.scen;
+        if (s.cellType === 'macrofago' || s.cellType === 'neutrofilo') cellType = s.cellType;
+      }
     } catch (e) {}
   }
   menu.addEventListener('input', saveState);
@@ -1756,10 +1971,13 @@ pre#json {
   loadState();
   if (!SAVER) { wakeFab(); toast(null, 5200); requestWake(); }
 
+  if (urlScen && blood()) { grainOn = true; const pr = SCEN[cellKey()].sl; for (const id in pr) $(id).value = pr[id]; }
   readTheme();
+  syncScenarioUI();
   resize();
   syncControls();
   reset();
+  resize();
   readouts();
   loop();
 })();

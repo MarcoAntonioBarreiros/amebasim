@@ -18,13 +18,13 @@ def rep(a, b):
 
 rep("let running = !reduce, speed = 2, seed = 7;", "let running = true, speed = 2, seed = 7;")
 rep("const cam = { x: 0, y: 0, s: 1 };", "const cam = { x: 0, y: 0, s: 1, base: 1 };\n  let zoom = 1;")
-rep("cam.s = Math.max(0.8, Math.min(2.1, Math.min(W, H) / 360));",
-    "cam.base = Math.max(0.8, Math.min(2.1, Math.min(W, H) / 360)); cam.s = cam.base * zoom;")
-rep("if (source.age >= SRC_HOLD + SRC_FADE) { source = null; $('hint').textContent = HINT0; }",
+rep("cam.s = Math.max(0.8, Math.min(2.1, Math.min(W, H) / 360)) * viewScale();",
+    "cam.base = Math.max(0.8, Math.min(2.1, Math.min(W, H) / 360)) * viewScale(); cam.s = cam.base * zoom;")
+rep("if (source.age >= SRC_HOLD + SRC_FADE) { source = null; $('hint').textContent = HINTS[scen]; }",
     "if (source.age >= SRC_HOLD + SRC_FADE) source = null;")
 rep("$('chips').innerHTML = chips.map(t => `<span class=\"chip\">${t}</span>`).join('');",
     "$('chips').textContent = chips.length ? chips.join(', ') : 'nenhum';")
-rep("$('btnClearSrc').addEventListener('click', () => { source = null; $('hint').textContent = HINT0; });",
+rep("$('btnClearSrc').addEventListener('click', () => { source = null; $('hint').textContent = HINTS[scen]; });",
     "$('btnClearSrc').addEventListener('click', () => { source = null; });")
 rep("  $('btnPlay').addEventListener('click', () => { running = !running; $('btnPlay').textContent = running ? 'Pausar' : 'Continuar'; });\n", "")
 rep("""  function syncTheme() {
@@ -98,7 +98,7 @@ APP = r"""
     const r = cv.getBoundingClientRect();
     const x = (px - r.left - W / 2) / cam.s + cam.x, y = (py - r.top - H / 2) / cam.s + cam.y;
     source = { x, y, age: 0 };
-    toast('Micropipeta colocada. O sinal se esgota sozinho.');
+    toast(blood() ? 'Micropipeta de fMLP colocada. O sinal se esgota sozinho.' : 'Micropipeta colocada. O sinal se esgota sozinho.');
   }
   cv.addEventListener('pointerdown', e => {
     try { cv.setPointerCapture(e.pointerId); } catch (_) {}
@@ -126,7 +126,7 @@ APP = r"""
   function saveState() {
     try {
       localStorage.setItem(KEY, JSON.stringify({
-        v: Object.fromEntries(SLIDERS.map(id => [id, $(id).value])), inhib, preyOn, grainOn, layers, speed, seed,
+        v: Object.fromEntries(SLIDERS.map(id => [id, $(id).value])), inhib, preyOn, grainOn, layers, speed, seed, scen, cellType,
         theme: document.documentElement.getAttribute('data-theme')
       }));
     } catch (e) {}
@@ -146,6 +146,11 @@ APP = r"""
       for (const b of document.querySelectorAll('.seg button[data-sp]')) b.setAttribute('aria-pressed', +b.dataset.sp === speed ? 'true' : 'false');
       seed = Math.max(1, s.seed | 0) || 7; $('seed').value = seed;
       if (s.theme === 'light' || s.theme === 'dark') document.documentElement.setAttribute('data-theme', s.theme);
+      // cenário salvo (um link com ?cenario=... tem prioridade)
+      if (!urlScen && (s.scen === 'solo' || s.scen === 'sangue')) {
+        scen = s.scen;
+        if (s.cellType === 'macrofago' || s.cellType === 'neutrofilo') cellType = s.cellType;
+      }
     } catch (e) {}
   }
   menu.addEventListener('input', saveState);
@@ -154,8 +159,9 @@ APP = r"""
   loadState();
   if (!SAVER) { wakeFab(); toast(null, 5200); requestWake(); }
 """
-rep("\n  readTheme();\n  resize();\n  syncControls();\n  reset();\n  if (!running) $('btnPlay').textContent = 'Continuar';\n  readouts();\n  loop();",
-    APP + "\n  readTheme();\n  resize();\n  syncControls();\n  reset();\n  readouts();\n  loop();")
+rep("\n  if (urlScen && blood()) {",
+    APP + "\n  if (urlScen && blood()) {")
+rep("\n  if (!running) $('btnPlay').textContent = 'Continuar';\n  readouts();\n  loop();", "\n  readouts();\n  loop();")
 
 out = shell.replace('/*__CORE__*/', core) + js
 

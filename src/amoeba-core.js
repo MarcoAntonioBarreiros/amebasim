@@ -54,6 +54,10 @@
     ectoThickness: 8,    // espessura do tubo ectoplasmático (px)
     capDepth: 8,         // profundidade da calota hialina (px)
     minThickness: 28,    // espessura mínima de qualquer trecho da célula (px)
+    contractileVacuole: true, // protistas de água doce têm; leucócitos não
+    nucleusRadius: 10,
+    crystalFrac: 0.14,   // cristais bipiramidais (próprios de Amoeba proteus)
+    vacuoleFrac: 0.035,  // vacúolos / lisossomos
     flowSpeed: 1.0,      // escala do fluxo do endoplasma
     iterations: 6,       // iterações das restrições por passo (VIT na DarwinRizo)
     maxNodes: 220,
@@ -110,10 +114,10 @@
           gel: gelBias != null ? gelBias : (edge < P.ectoThickness + r ? 1 : 0),
           phase: rng(), digest: 0, digestMax: 0, spin: rng() * TAU });
       };
-      put('nucleus', 10, 0);
-      put('cv', 3, 0);
-      const nVac = Math.round(P.particles * 0.035);
-      const nCry = Math.round(P.particles * 0.14);
+      put('nucleus', P.nucleusRadius, 0);
+      if (P.contractileVacuole) put('cv', 3, 0);
+      const nVac = Math.round(P.particles * P.vacuoleFrac);
+      const nCry = Math.round(P.particles * P.crystalFrac);
       for (let i = 0; i < nVac; i++) put('vacuole', 3 + rng() * 2.2);
       for (let i = 0; i < nCry; i++) put('crystal', 1.5 + rng() * 0.6);
       const rest = Math.max(0, P.particles - nVac - nCry);
@@ -624,12 +628,27 @@
       for (const nd of N) nd.hit = false;
       if (!env) return;
       const B = env.bounds;
+      // obstáculo móvel (ex.: hemácia) que foi parar dentro da célula é expulso pela borda mais próxima;
+      // obstáculo fixo (grão) nessa situação é ignorado, para nunca virar âncora
+      if (env.obstacles) {
+        const ne = {};
+        for (const o of env.obstacles) if (o.mobile && this.pointInside(o.x, o.y)) {
+          this.nearestEdge(o.x, o.y, ne);
+          o.x = ne.px + ne.nx * (o.r + 2); o.y = ne.py + ne.ny * (o.r + 2);
+        }
+      }
       const obs = env.obstacles ? env.obstacles.filter(o => !this.pointInside(o.x, o.y)) : null;
       this.metrics.enclosed = env.obstacles ? env.obstacles.length - obs.length : 0;
       if (obs && obs.length) for (let pass = 0; pass < 2; pass++) {
         for (const nd of N) for (const o of obs) {
           const dx = nd.x - o.x, dy = nd.y - o.y, d = Math.hypot(dx, dy), m = o.r + 1;
-          if (d < m && d > 1e-6) { nd.x = o.x + dx / d * m; nd.y = o.y + dy / d * m; nd.hit = true; }
+          if (d < m && d > 1e-6) {
+            // obstáculo móvel divide o deslocamento com a membrana (a célula empurra a hemácia)
+            const push = m - d, k = o.mobile ? (o.give || 0.6) : 0;
+            nd.x += dx / d * push * (1 - k); nd.y += dy / d * push * (1 - k);
+            o.x -= dx / d * push * k; o.y -= dy / d * push * k;
+            nd.hit = true;
+          }
         }
         // segmento que corta o grão: empurra as duas pontas para fora pelo ponto mais próximo
         for (let i = 0; i < n; i++) {
@@ -640,9 +659,10 @@
             if (d >= m) continue;
             let ux, uy;
             if (d > 1e-6) { ux = dx / d; uy = dy / d; } else { const l = Math.sqrt(l2); ux = -ey / l; uy = ex / l; }
-            const push = m - d;
-            a.x += ux * push * (1 - t); a.y += uy * push * (1 - t);
-            b.x += ux * push * t; b.y += uy * push * t;
+            const push = m - d, k = o.mobile ? (o.give || 0.6) : 0;
+            a.x += ux * push * (1 - t) * (1 - k); a.y += uy * push * (1 - t) * (1 - k);
+            b.x += ux * push * t * (1 - k); b.y += uy * push * t * (1 - k);
+            o.x -= ux * push * k; o.y -= uy * push * k;
             a.hit = b.hit = true;
           }
         }

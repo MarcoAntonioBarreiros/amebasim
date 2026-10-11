@@ -7,6 +7,22 @@ membrana e adesão ao substrato. Os pseudópodes crescem, ramificam, tateiam o a
 entre si. A célula fagocita bactérias, que liberam um atraente detectado pela ponta de cada
 pseudópode (resposta relativa ao gradiente, lei de Weber).
 
+## Cenários
+
+- **Solo · ameba:** ameba de vida livre entre grãos de solo, pastando bactérias que liberam
+  folato. Tem vacúolo contrátil e cristais bipiramidais.
+- **Sangue · leucócito:** a mesma mecânica sol-gel num leucócito entre hemácias, perseguindo
+  estafilococos que liberam fMLP. Há dois tipos celulares:
+  - **Macrófago** (~21 µm): grande, lento e muito aderente; núcleo em feijão.
+  - **Neutrófilo** (~12 µm): menor e rápido; núcleo multilobado. É a cena do filme clássico de
+    David Rogers.
+
+  As hemácias são discos leves, que a célula empurra ao passar. A presa fagocitada é degradada
+  no fagolisossomo. Escala do cenário: ~6 px/µm.
+
+O cenário é escolhido no menu. Para abrir direto num deles (por exemplo, num link para alunos):
+`?cenario=sangue&celula=neutrofilo` ou `?cenario=sangue&celula=macrofago`.
+
 ## Usar
 
 - **Android:** baixe `ameba-sol-gel.apk` na página [Releases](../../releases/latest) e abra o

@@ -173,6 +173,7 @@ pre#json {
   border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; overflow-x: auto; white-space: pre; user-select: all;
 }
 .note { font-size: 0.76rem; color: var(--muted); margin: 0; }
+[hidden] { display: none !important; }
 .howto { margin: 0; padding-left: 1.1em; font-size: 0.8rem; color: var(--muted); display: grid; gap: 3px; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 </style>
@@ -192,6 +193,19 @@ pre#json {
     </div>
     <div class="sheet-body">
       <section class="sec">
+        <h2>Cenário</h2>
+        <div class="seg" role="group" aria-label="Cenário">
+          <button type="button" id="scSolo" data-sc="solo" aria-pressed="true">Solo · ameba</button>
+          <button type="button" id="scSangue" data-sc="sangue" aria-pressed="false">Sangue · leucócito</button>
+        </div>
+        <div class="seg" id="cellRow" role="group" aria-label="Tipo celular" hidden>
+          <button type="button" id="ctMacro" data-ct="macrofago" aria-pressed="true">Macrófago</button>
+          <button type="button" id="ctNeutro" data-ct="neutrofilo" aria-pressed="false">Neutrófilo</button>
+        </div>
+        <p class="note" id="scNote"></p>
+      </section>
+
+      <section class="sec">
         <h2>Simulação</h2>
         <div class="seg mono" role="group" aria-label="Velocidade da simulação">
           <button type="button" id="sp1" data-sp="1" aria-pressed="false">1×</button>
@@ -207,7 +221,7 @@ pre#json {
           <button class="btn" id="btnClearSrc" type="button">Remover micropipeta</button>
         </div>
         <ul class="howto">
-          <li>Toque no campo: coloca uma micropipeta com atraente. O sinal se esgota sozinho.</li>
+          <li>Toque no campo: coloca uma micropipeta com atraente (folato no solo, fMLP no sangue). O sinal se esgota sozinho.</li>
           <li>Pinça com dois dedos: zoom. A câmera acompanha a ameba.</li>
           <li>Botão voltar ou botão no canto: abre este menu.</li>
           <li id="howtoSaver" hidden>Proteção de tela: em Configurações → Tela → Proteção de tela, escolha Ameba Sol-Gel. Ela usa a iluminação e os parâmetros escolhidos aqui.</li>
