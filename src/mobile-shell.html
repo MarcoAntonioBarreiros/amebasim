@@ -1,0 +1,302 @@
+<title>Ameba Sol-Gel</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#05080c">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo:wght@400;500;700&family=Chivo+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: app de tela cheia — só o campo de visão; um botão de pausa discreto no canto
+   abre o menu (folha que sobe por cima da simulação congelada; à direita em paisagem). */
+:root {
+  --bg: #e4e9e6;
+  --field: #dde4e0;
+  --panel: #f1f4f1;
+  --ink: #1b2420;
+  --muted: #5a6862;
+  --line: #c6d0cb;
+  --accent: #2c5a96;
+  --accent-ink: #ffffff;
+  --tip: #12807d;
+  --rear: #a93072;
+  --sol: #b97a1f;
+  --gel: #4f75a0;
+  --good: #2f7d4a;
+  --warn: #a5671a;
+  --scrim: rgba(20, 28, 24, 0.28);
+  --font-ui: 'Chivo', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-data: 'Chivo Mono', ui-monospace, 'SFMono-Regular', Menlo, 'Roboto Mono', monospace;
+  --field-mode: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0b1016; --field: #05080c; --panel: #111820; --ink: #dce6ec; --muted: #8796a2;
+    --line: #233140; --accent: #86aee8; --accent-ink: #0a1220; --tip: #5ccfc6; --rear: #e27ab6;
+    --sol: #e8b25e; --gel: #8eb1dc; --good: #6cc38a; --warn: #e2a855; --scrim: rgba(0, 0, 0, 0.45);
+    --field-mode: dark; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0b1016; --field: #05080c; --panel: #111820; --ink: #dce6ec; --muted: #8796a2;
+  --line: #233140; --accent: #86aee8; --accent-ink: #0a1220; --tip: #5ccfc6; --rear: #e27ab6;
+  --sol: #e8b25e; --gel: #8eb1dc; --good: #6cc38a; --warn: #e2a855; --scrim: rgba(0, 0, 0, 0.45);
+  --field-mode: dark; color-scheme: dark;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; }
+:root { padding: 0 !important; }
+body { margin: 0; overflow: hidden; background: var(--field); color: var(--ink); font-family: var(--font-ui); font-size: 15px; line-height: 1.45; overscroll-behavior: none; }
+button, input { font: inherit; color: inherit; }
+
+/* ── campo ── */
+#cv { position: fixed; inset: 0; width: 100vw; height: 100vh; height: 100dvh; display: block; touch-action: none; }
+
+.fab {
+  position: fixed; z-index: 5; width: 44px; height: 44px; border-radius: 50%;
+  top: calc(env(safe-area-inset-top, 0px) + 12px); right: calc(env(safe-area-inset-right, 0px) + 12px);
+  border: 1px solid color-mix(in srgb, var(--ink) 25%, transparent);
+  background: color-mix(in srgb, var(--panel) 40%, transparent);
+  display: grid; place-items: center; cursor: pointer; padding: 0;
+  opacity: 0.55; transition: opacity 0.6s ease;
+}
+.fab.idle { opacity: 0.14; }
+.fab i { display: flex; gap: 5px; }
+.fab i::before, .fab i::after { content: ""; width: 4px; height: 14px; border-radius: 1px; background: var(--ink); }
+.fab:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; opacity: 1; }
+
+.toast {
+  position: fixed; z-index: 4; left: 50%; transform: translateX(-50%);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 18px);
+  max-width: min(92vw, 520px); text-align: center; pointer-events: none;
+  font-size: 0.82rem; line-height: 1.35; color: var(--ink);
+  background: color-mix(in srgb, var(--panel) 80%, transparent);
+  border: 1px solid var(--line); border-radius: 10px; padding: 7px 12px;
+  opacity: 0; transition: opacity 0.5s ease;
+}
+.toast.on { opacity: 1; }
+
+/* ── menu de pausa ── */
+.menu { position: fixed; inset: 0; z-index: 10; display: flex; align-items: flex-end; justify-content: center; background: var(--scrim); }
+.menu[hidden] { display: none !important; }
+.sheet {
+  width: 100%; max-width: 560px; max-height: 88vh; max-height: 88dvh;
+  background: var(--panel); border: 1px solid var(--line); border-bottom: 0;
+  border-radius: 16px 16px 0 0; display: flex; flex-direction: column; overflow: hidden;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  animation: up 0.22s ease-out;
+}
+@keyframes up { from { transform: translateY(24px); opacity: 0.4; } to { transform: none; opacity: 1; } }
+@media (orientation: landscape) and (min-width: 700px) {
+  .menu { justify-content: flex-end; align-items: stretch; }
+  .sheet { max-width: 400px; max-height: none; border-radius: 0; border-bottom: 1px solid var(--line); border-right: 0;
+           padding-right: env(safe-area-inset-right, 0px); padding-top: env(safe-area-inset-top, 0px); animation-name: side; }
+  @keyframes side { from { transform: translateX(24px); opacity: 0.4; } to { transform: none; opacity: 1; } }
+}
+.sheet-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 14px 16px 12px; border-bottom: 1px solid var(--line);
+}
+.sheet-head h1 { margin: 0; font-size: 1.05rem; font-weight: 700; letter-spacing: 0.01em; }
+.sheet-head p { margin: 1px 0 0; font-size: 0.78rem; color: var(--muted); }
+.sheet-body { overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+
+.btn {
+  border: 1px solid var(--line); background: var(--bg); border-radius: 8px; padding: 9px 14px; cursor: pointer;
+  font-weight: 500; line-height: 1.2; min-height: 40px;
+}
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.btn.wide { width: 100%; }
+.btn:focus-visible, input:focus-visible, .seg button:focus-visible, .toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.seg { display: flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { flex: 1; border: 0; background: var(--bg); padding: 9px 10px; min-height: 40px; cursor: pointer; font-size: 0.86rem; }
+.seg.mono button { font-family: var(--font-data); }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+
+.sec { padding: 14px 16px 16px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 12px; }
+.sec:last-child { border-bottom: 0; }
+.sec h2 { margin: 0; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.09em; color: var(--muted); }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+.readouts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
+.ro { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.ro span { font-size: 0.74rem; color: var(--muted); }
+.ro b { font-family: var(--font-data); font-weight: 500; font-size: 1rem; font-variant-numeric: tabular-nums; display: flex; align-items: center; gap: 7px; }
+.ro b small { font-size: 0.72rem; color: var(--muted); font-weight: 400; }
+#status { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); display: inline-block; flex: none; }
+#status[data-s="go"] { background: var(--good); }
+#status[data-s="spin"] { background: var(--warn); }
+
+.ctl { display: flex; flex-direction: column; gap: 3px; }
+.ctl .row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.ctl label { font-weight: 500; font-size: 0.9rem; }
+.ctl output { font-family: var(--font-data); font-size: 0.82rem; font-variant-numeric: tabular-nums; color: var(--muted); }
+.ctl p { margin: 0; font-size: 0.76rem; color: var(--muted); line-height: 1.4; }
+.ctl.off label, .ctl.off output { text-decoration: line-through; text-decoration-color: var(--rear); }
+input[type="range"] { width: 100%; accent-color: var(--accent); margin: 6px 0 2px; height: 28px; }
+
+.toggles { display: flex; flex-direction: column; gap: 8px; }
+.toggle {
+  display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; align-items: start; text-align: left;
+  border: 1px solid var(--line); background: var(--bg); border-radius: 10px; padding: 10px 12px; cursor: pointer;
+}
+.toggle .box { grid-row: span 2; width: 18px; height: 18px; border-radius: 4px; border: 1.5px solid var(--muted); margin-top: 1px; }
+.toggle strong { font-weight: 500; font-size: 0.9rem; }
+.toggle small { color: var(--muted); font-size: 0.76rem; line-height: 1.35; }
+.toggle[aria-pressed="true"] { border-color: var(--rear); }
+.toggle[aria-pressed="true"] .box { background: var(--rear); border-color: var(--rear); }
+.toggle.env[aria-pressed="true"] { border-color: var(--accent); }
+.toggle.env[aria-pressed="true"] .box { background: var(--accent); border-color: var(--accent); }
+
+.layers { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.layer { display: flex; gap: 9px; align-items: center; font-size: 0.88rem; cursor: pointer; min-height: 28px; }
+.layer input { accent-color: var(--accent); margin: 0; width: 18px; height: 18px; }
+.sw { width: 18px; height: 10px; border-radius: 3px; flex: none; }
+.sw.tip { background: linear-gradient(90deg, var(--tip), var(--rear)); }
+.sw.gel { background: linear-gradient(90deg, var(--gel), var(--sol)); }
+.sw.flow { background: repeating-linear-gradient(90deg, var(--ink) 0 4px, transparent 4px 7px); height: 3px; }
+.sw.anc { background: var(--accent); width: 8px; height: 8px; border-radius: 1px; }
+.sw.pod { border-top: 2px solid var(--tip); height: 0; }
+.sw.attr { background: radial-gradient(circle, var(--good) 0 30%, transparent 75%); width: 14px; height: 14px; }
+
+.params { display: flex; flex-direction: column; gap: 8px; }
+.params .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.params label { font-size: 0.84rem; color: var(--muted); }
+.params input[type="number"] { width: 96px; min-height: 40px; border: 1px solid var(--line); background: var(--bg); border-radius: 8px; padding: 6px 9px; font-family: var(--font-data); }
+pre#json {
+  margin: 0; font-family: var(--font-data); font-size: 0.72rem; line-height: 1.5; background: var(--bg);
+  border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; overflow-x: auto; white-space: pre; user-select: all;
+}
+.note { font-size: 0.76rem; color: var(--muted); margin: 0; }
+.howto { margin: 0; padding-left: 1.1em; font-size: 0.8rem; color: var(--muted); display: grid; gap: 3px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+
+<canvas id="cv" aria-label="Campo de visão com a ameba"></canvas>
+<button class="fab" id="btnMenu" type="button" aria-label="Pausar e abrir o menu"><i></i></button>
+<div class="toast" id="hint" role="status">Toque para colocar uma micropipeta · pinça para zoom · botão no canto para pausar</div>
+
+<div class="menu" id="menu" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="menuTitle">
+    <div class="sheet-head">
+      <div>
+        <h1 id="menuTitle">Ameba Sol-Gel</h1>
+        <p>Simulação pausada</p>
+      </div>
+      <button class="btn primary" id="btnResume" type="button">Continuar</button>
+    </div>
+    <div class="sheet-body">
+      <section class="sec">
+        <h2>Simulação</h2>
+        <div class="seg mono" role="group" aria-label="Velocidade da simulação">
+          <button type="button" id="sp1" data-sp="1" aria-pressed="false">1×</button>
+          <button type="button" id="sp2" data-sp="2" aria-pressed="true">2×</button>
+          <button type="button" id="sp4" data-sp="4" aria-pressed="false">4×</button>
+        </div>
+        <div class="seg" role="group" aria-label="Iluminação do campo">
+          <button type="button" id="thLight" data-th="light" aria-pressed="false">Campo claro</button>
+          <button type="button" id="thDark" data-th="dark" aria-pressed="false">Campo escuro</button>
+        </div>
+        <div class="row2">
+          <button class="btn" id="btnReset" type="button">Reiniciar</button>
+          <button class="btn" id="btnClearSrc" type="button">Remover micropipeta</button>
+        </div>
+        <ul class="howto">
+          <li>Toque no campo: coloca uma micropipeta com atraente. O sinal se esgota sozinho.</li>
+          <li>Pinça com dois dedos: zoom. A câmera acompanha a ameba.</li>
+          <li>Botão voltar ou botão no canto: abre este menu.</li>
+        </ul>
+      </section>
+
+      <section class="sec">
+        <h2>Leituras</h2>
+        <div class="readouts">
+          <div class="ro"><span>Estado</span><b><i id="status" data-s="go"></i><span id="statusTxt">Avançando</span></b></div>
+          <div class="ro"><span>Avanço da célula</span><b id="rSpeed">0</b></div>
+          <div class="ro"><span>Fluxo do endoplasma ÷ avanço</span><b id="rRatio">—</b></div>
+          <div class="ro"><span>Tração transmitida</span><b id="rClutch">0</b></div>
+          <div class="ro"><span>Adesões ativas</span><b id="rAnch">0</b></div>
+          <div class="ro"><span>Pseudópodes</span><b id="rPods">1</b></div>
+          <div class="ro"><span>Sístoles do vacúolo contrátil</span><b id="rCv">0</b></div>
+          <div class="ro"><span>Fagocitadas · digeridas</span><b id="rEng">0</b></div>
+          <div class="ro"><span>Sinal quimiotático percebido</span><b id="rSense">0</b></div>
+          <div class="ro"><span>Inibidores</span><b id="chips">nenhum</b></div>
+        </div>
+      </section>
+
+      <section class="sec">
+        <h2>Motor celular</h2>
+        <div class="ctl" id="c-contraction"><div class="row"><label for="contraction">Contração posterior (miosina II)</label><output id="o-contraction"></output></div>
+          <input type="range" id="contraction" min="0" max="1" step="0.01" value="0.6">
+          <p>Encurta o córtex no uroide e gera a pressão que empurra o endoplasma para a ponta.</p></div>
+        <div class="ctl" id="c-adhesion"><div class="row"><label for="adhesion">Adesão ao substrato</label><output id="o-adhesion"></output></div>
+          <input type="range" id="adhesion" min="0" max="1" step="0.01" value="0.6">
+          <p>Fração da força ativa transmitida ao substrato. Em zero, a célula deforma mas não sai do lugar.</p></div>
+        <div class="ctl" id="c-gelation"><div class="row"><label for="gelation">Gelificação (rede de actina)</label><output id="o-gelation"></output></div>
+          <input type="range" id="gelation" min="0" max="1" step="0.01" value="0.5">
+          <p>Velocidade com que o sol vira gel junto à membrana. Forma o tubo ectoplasmático, que sustenta as adesões.</p></div>
+        <div class="ctl" id="c-flowSpeed"><div class="row"><label for="flowSpeed">Escala do fluxo do endoplasma</label><output id="o-flowSpeed"></output></div>
+          <input type="range" id="flowSpeed" min="0.3" max="2" step="0.05" value="1">
+          <p>Só altera o escoamento interno; a translocação depende da membrana e das adesões.</p></div>
+      </section>
+
+      <section class="sec">
+        <h2>Polaridade</h2>
+        <div class="ctl" id="c-chemotaxis"><div class="row"><label for="chemotaxis">Quimiotaxia</label><output id="o-chemotaxis"></output></div>
+          <input type="range" id="chemotaxis" min="0" max="1" step="0.01" value="0.6">
+          <p>Peso do gradiente (micropipeta ou bactérias) na escolha e no crescimento dos pseudópodes.</p></div>
+        <div class="ctl" id="c-pseudopodRate"><div class="row"><label for="pseudopodRate">Ramificação e tateio</label><output id="o-pseudopodRate"></output></div>
+          <input type="range" id="pseudopodRate" min="0" max="1" step="0.01" value="0.5">
+          <p>Frequência de ramos, bifurcações de ponta e lóbulos. Alto: a ameba tateia o ambiente com muitos braços.</p></div>
+        <div class="ctl" id="c-podW"><div class="row"><label for="podW">Largura dos braços</label><output id="o-podW"></output></div>
+          <input type="range" id="podW" min="0" max="1" step="0.01" value="0.5">
+          <p>Largura do braço principal. Ramos e lóbulos são proporcionalmente mais finos.</p></div>
+      </section>
+
+      <section class="sec">
+        <h2>Inibidores</h2>
+        <div class="toggles">
+          <button type="button" class="toggle" id="tBleb" aria-pressed="false"><span class="box"></span><strong>Blebistatina</strong><small>Inibe a miosina II. A contração posterior para; resta só a protrusão por polimerização.</small></button>
+          <button type="button" class="toggle" id="tCyto" aria-pressed="false"><span class="box"></span><strong>Citocalasina D</strong><small>Impede a polimerização de actina. O gel se desfaz e as adesões se perdem.</small></button>
+        </div>
+      </section>
+
+      <section class="sec">
+        <h2>Ambiente</h2>
+        <div class="toggles">
+          <button type="button" class="toggle env" id="tPrey" aria-pressed="true"><span class="box"></span><strong>Bactérias</strong><small>Presas em microcolônias. Liberam atraente; engolidas viram vacúolos digestivos.</small></button>
+          <button type="button" class="toggle env" id="tGrain" aria-pressed="false"><span class="box"></span><strong>Grãos de solo</strong><small>Obstáculos minerais; a ameba contorna e se espreme entre eles.</small></button>
+        </div>
+      </section>
+
+      <section class="sec">
+        <h2>Camadas</h2>
+        <div class="layers">
+          <label class="layer"><input type="checkbox" id="lGel" checked><span class="sw gel"></span>Gel e sol</label>
+          <label class="layer"><input type="checkbox" id="lPol" checked><span class="sw tip"></span>Ponta e uroide</label>
+          <label class="layer"><input type="checkbox" id="lAnc" checked><span class="sw anc"></span>Adesões</label>
+          <label class="layer"><input type="checkbox" id="lFlow"><span class="sw flow"></span>Fluxo</label>
+          <label class="layer"><input type="checkbox" id="lPod"><span class="sw pod"></span>Pseudópodes</label>
+          <label class="layer"><input type="checkbox" id="lAttr"><span class="sw attr"></span>Atraente</label>
+        </div>
+      </section>
+
+      <section class="sec">
+        <h2>Parâmetros</h2>
+        <div class="params">
+          <div class="row"><label for="seed">Semente</label><input type="number" id="seed" value="7" min="1" step="1" inputmode="numeric"><button class="btn" id="btnSeed" type="button">Aplicar</button></div>
+          <pre id="json"></pre>
+          <div class="row"><button class="btn" id="btnCopy" type="button">Copiar parâmetros</button><span class="note" id="copyMsg"></span></div>
+          <p class="note">Mesma semente e mesmos parâmetros reproduzem o mesmo movimento.</p>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script>
+/*__CORE__*/
+</script>

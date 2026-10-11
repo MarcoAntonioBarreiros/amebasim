@@ -1,0 +1,1765 @@
+<!doctype html>
+<html lang="pt-BR">
+<meta charset="utf-8">
+<title>Ameba Sol-Gel</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="theme-color" content="#05080c">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo:wght@400;500;700&family=Chivo+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: app de tela cheia — só o campo de visão; um botão de pausa discreto no canto
+   abre o menu (folha que sobe por cima da simulação congelada; à direita em paisagem). */
+:root {
+  --bg: #e4e9e6;
+  --field: #dde4e0;
+  --panel: #f1f4f1;
+  --ink: #1b2420;
+  --muted: #5a6862;
+  --line: #c6d0cb;
+  --accent: #2c5a96;
+  --accent-ink: #ffffff;
+  --tip: #12807d;
+  --rear: #a93072;
+  --sol: #b97a1f;
+  --gel: #4f75a0;
+  --good: #2f7d4a;
+  --warn: #a5671a;
+  --scrim: rgba(20, 28, 24, 0.28);
+  --font-ui: 'Chivo', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-data: 'Chivo Mono', ui-monospace, 'SFMono-Regular', Menlo, 'Roboto Mono', monospace;
+  --field-mode: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0b1016; --field: #05080c; --panel: #111820; --ink: #dce6ec; --muted: #8796a2;
+    --line: #233140; --accent: #86aee8; --accent-ink: #0a1220; --tip: #5ccfc6; --rear: #e27ab6;
+    --sol: #e8b25e; --gel: #8eb1dc; --good: #6cc38a; --warn: #e2a855; --scrim: rgba(0, 0, 0, 0.45);
+    --field-mode: dark; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0b1016; --field: #05080c; --panel: #111820; --ink: #dce6ec; --muted: #8796a2;
+  --line: #233140; --accent: #86aee8; --accent-ink: #0a1220; --tip: #5ccfc6; --rear: #e27ab6;
+  --sol: #e8b25e; --gel: #8eb1dc; --good: #6cc38a; --warn: #e2a855; --scrim: rgba(0, 0, 0, 0.45);
+  --field-mode: dark; color-scheme: dark;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; }
+:root { padding: 0 !important; }
+body { margin: 0; overflow: hidden; background: var(--field); color: var(--ink); font-family: var(--font-ui); font-size: 15px; line-height: 1.45; overscroll-behavior: none; }
+button, input { font: inherit; color: inherit; }
+
+/* ── campo ── */
+#cv { position: fixed; inset: 0; width: 100vw; height: 100vh; height: 100dvh; display: block; touch-action: none; }
+
+.fab {
+  position: fixed; z-index: 5; width: 44px; height: 44px; border-radius: 50%;
+  top: calc(env(safe-area-inset-top, 0px) + 12px); right: calc(env(safe-area-inset-right, 0px) + 12px);
+  border: 1px solid color-mix(in srgb, var(--ink) 25%, transparent);
+  background: color-mix(in srgb, var(--panel) 40%, transparent);
+  display: grid; place-items: center; cursor: pointer; padding: 0;
+  opacity: 0.55; transition: opacity 0.6s ease;
+}
+.fab.idle { opacity: 0.14; }
+.fab i { display: flex; gap: 5px; }
+.fab i::before, .fab i::after { content: ""; width: 4px; height: 14px; border-radius: 1px; background: var(--ink); }
+.fab:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; opacity: 1; }
+
+.toast {
+  position: fixed; z-index: 4; left: 50%; transform: translateX(-50%);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 18px);
+  max-width: min(92vw, 520px); text-align: center; pointer-events: none;
+  font-size: 0.82rem; line-height: 1.35; color: var(--ink);
+  background: color-mix(in srgb, var(--panel) 80%, transparent);
+  border: 1px solid var(--line); border-radius: 10px; padding: 7px 12px;
+  opacity: 0; transition: opacity 0.5s ease;
+}
+.toast.on { opacity: 1; }
+
+/* ── menu de pausa ── */
+.menu { position: fixed; inset: 0; z-index: 10; display: flex; align-items: flex-end; justify-content: center; background: var(--scrim); }
+.menu[hidden] { display: none !important; }
+.sheet {
+  width: 100%; max-width: 560px; max-height: 88vh; max-height: 88dvh;
+  background: var(--panel); border: 1px solid var(--line); border-bottom: 0;
+  border-radius: 16px 16px 0 0; display: flex; flex-direction: column; overflow: hidden;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  animation: up 0.22s ease-out;
+}
+@keyframes up { from { transform: translateY(24px); opacity: 0.4; } to { transform: none; opacity: 1; } }
+@media (orientation: landscape) and (min-width: 700px) {
+  .menu { justify-content: flex-end; align-items: stretch; }
+  .sheet { max-width: 400px; max-height: none; border-radius: 0; border-bottom: 1px solid var(--line); border-right: 0;
+           padding-right: env(safe-area-inset-right, 0px); padding-top: env(safe-area-inset-top, 0px); animation-name: side; }
+  @keyframes side { from { transform: translateX(24px); opacity: 0.4; } to { transform: none; opacity: 1; } }
+}
+.sheet-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 14px 16px 12px; border-bottom: 1px solid var(--line);
+}
+.sheet-head h1 { margin: 0; font-size: 1.05rem; font-weight: 700; letter-spacing: 0.01em; }
+.sheet-head p { margin: 1px 0 0; font-size: 0.78rem; color: var(--muted); }
+.sheet-body { overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+
+.btn {
+  border: 1px solid var(--line); background: var(--bg); border-radius: 8px; padding: 9px 14px; cursor: pointer;
+  font-weight: 500; line-height: 1.2; min-height: 40px;
+}
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.btn.wide { width: 100%; }
+.btn:focus-visible, input:focus-visible, .seg button:focus-visible, .toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.seg { display: flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { flex: 1; border: 0; background: var(--bg); padding: 9px 10px; min-height: 40px; cursor: pointer; font-size: 0.86rem; }
+.seg.mono button { font-family: var(--font-data); }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+
+.sec { padding: 14px 16px 16px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 12px; }
+.sec:last-child { border-bottom: 0; }
+.sec h2 { margin: 0; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.09em; color: var(--muted); }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+.readouts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
+.ro { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.ro span { font-size: 0.74rem; color: var(--muted); }
+.ro b { font-family: var(--font-data); font-weight: 500; font-size: 1rem; font-variant-numeric: tabular-nums; display: flex; align-items: center; gap: 7px; }
+.ro b small { font-size: 0.72rem; color: var(--muted); font-weight: 400; }
+#status { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); display: inline-block; flex: none; }
+#status[data-s="go"] { background: var(--good); }
+#status[data-s="spin"] { background: var(--warn); }
+
+.ctl { display: flex; flex-direction: column; gap: 3px; }
+.ctl .row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.ctl label { font-weight: 500; font-size: 0.9rem; }
+.ctl output { font-family: var(--font-data); font-size: 0.82rem; font-variant-numeric: tabular-nums; color: var(--muted); }
+.ctl p { margin: 0; font-size: 0.76rem; color: var(--muted); line-height: 1.4; }
+.ctl.off label, .ctl.off output { text-decoration: line-through; text-decoration-color: var(--rear); }
+input[type="range"] { width: 100%; accent-color: var(--accent); margin: 6px 0 2px; height: 28px; }
+
+.toggles { display: flex; flex-direction: column; gap: 8px; }
+.toggle {
+  display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; align-items: start; text-align: left;
+  border: 1px solid var(--line); background: var(--bg); border-radius: 10px; padding: 10px 12px; cursor: pointer;
+}
+.toggle .box { grid-row: span 2; width: 18px; height: 18px; border-radius: 4px; border: 1.5px solid var(--muted); margin-top: 1px; }
+.toggle strong { font-weight: 500; font-size: 0.9rem; }
+.toggle small { color: var(--muted); font-size: 0.76rem; line-height: 1.35; }
+.toggle[aria-pressed="true"] { border-color: var(--rear); }
+.toggle[aria-pressed="true"] .box { background: var(--rear); border-color: var(--rear); }
+.toggle.env[aria-pressed="true"] { border-color: var(--accent); }
+.toggle.env[aria-pressed="true"] .box { background: var(--accent); border-color: var(--accent); }
+
+.layers { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.layer { display: flex; gap: 9px; align-items: center; font-size: 0.88rem; cursor: pointer; min-height: 28px; }
+.layer input { accent-color: var(--accent); margin: 0; width: 18px; height: 18px; }
+.sw { width: 18px; height: 10px; border-radius: 3px; flex: none; }
+.sw.tip { background: linear-gradient(90deg, var(--tip), var(--rear)); }
+.sw.gel { background: linear-gradient(90deg, var(--gel), var(--sol)); }
+.sw.flow { background: repeating-linear-gradient(90deg, var(--ink) 0 4px, transparent 4px 7px); height: 3px; }
+.sw.anc { background: var(--accent); width: 8px; height: 8px; border-radius: 1px; }
+.sw.pod { border-top: 2px solid var(--tip); height: 0; }
+.sw.attr { background: radial-gradient(circle, var(--good) 0 30%, transparent 75%); width: 14px; height: 14px; }
+
+.params { display: flex; flex-direction: column; gap: 8px; }
+.params .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.params label { font-size: 0.84rem; color: var(--muted); }
+.params input[type="number"] { width: 96px; min-height: 40px; border: 1px solid var(--line); background: var(--bg); border-radius: 8px; padding: 6px 9px; font-family: var(--font-data); }
+pre#json {
+  margin: 0; font-family: var(--font-data); font-size: 0.72rem; line-height: 1.5; background: var(--bg);
+  border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; overflow-x: auto; white-space: pre; user-select: all;
+}
+.note { font-size: 0.76rem; color: var(--muted); margin: 0; }
+.howto { margin: 0; padding-left: 1.1em; font-size: 0.8rem; color: var(--muted); display: grid; gap: 3px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+
+<canvas id="cv" aria-label="Campo de visão com a ameba"></canvas>
+<button class="fab" id="btnMenu" type="button" aria-label="Pausar e abrir o menu"><i></i></button>
+<div class="toast" id="hint" role="status">Toque para colocar uma micropipeta · pinça para zoom · botão no canto para pausar</div>
+
+<div class="menu" id="menu" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="menuTitle">
+    <div class="sheet-head">
+      <div>
+        <h1 id="menuTitle">Ameba Sol-Gel</h1>
+        <p>Simulação pausada</p>
+      </div>
+      <button class="btn primary" id="btnResume" type="button">Continuar</button>
+    </div>
+    <div class="sheet-body">
+      <section class="sec">
+        <h2>Simulação</h2>
+        <div class="seg mono" role="group" aria-label="Velocidade da simulação">
+          <button type="button" id="sp1" data-sp="1" aria-pressed="false">1×</button>
+          <button type="button" id="sp2" data-sp="2" aria-pressed="true">2×</button>
+          <button type="button" id="sp4" data-sp="4" aria-pressed="false">4×</button>
+        </div>
+        <div class="seg" role="group" aria-label="Iluminação do campo">
+          <button type="button" id="thLight" data-th="light" aria-pressed="false">Campo claro</button>
+          <button type="button" id="thDark" data-th="dark" aria-pressed="false">Campo escuro</button>
+        </div>
+        <div class="row2">
+          <button class="btn" id="btnReset" type="button">Reiniciar</button>
+          <button class="btn" id="btnClearSrc" type="button">Remover micropipeta</button>
+        </div>
+        <ul class="howto">
+          <li>Toque no campo: coloca uma micropipeta com atraente. O sinal se esgota sozinho.</li>
+          <li>Pinça com dois dedos: zoom. A câmera acompanha a ameba.</li>
+          <li>Botão voltar ou botão no canto: abre este menu.</li>
+        </ul>
+      </section>
+
+      <section class="sec">
+        <h2>Leituras</h2>
+        <div class="readouts">
+          <div class="ro"><span>Estado</span><b><i id="status" data-s="go"></i><span id="statusTxt">Avançando</span></b></div>
+          <div class="ro"><span>Avanço da célula</span><b id="rSpeed">0</b></div>
+          <div class="ro"><span>Fluxo do endoplasma ÷ avanço</span><b id="rRatio">—</b></div>
+          <div class="ro"><span>Tração transmitida</span><b id="rClutch">0</b></div>
+          <div class="ro"><span>Adesões ativas</span><b id="rAnch">0</b></div>
+          <div class="ro"><span>Pseudópodes</span><b id="rPods">1</b></div>
+          <div class="ro"><span>Sístoles do vacúolo contrátil</span><b id="rCv">0</b></div>
+          <div class="ro"><span>Fagocitadas · digeridas</span><b id="rEng">0</b></div>
+          <div class="ro"><span>Sinal quimiotático percebido</span><b id="rSense">0</b></div>
+          <div class="ro"><span>Inibidores</span><b id="chips">nenhum</b></div>
+        </div>
+      </section>
+
+      <section class="sec">
+        <h2>Motor celular</h2>
+        <div class="ctl" id="c-contraction"><div class="row"><label for="contraction">Contração posterior (miosina II)</label><output id="o-contraction"></output></div>
+          <input type="range" id="contraction" min="0" max="1" step="0.01" value="0.6">
+          <p>Encurta o córtex no uroide e gera a pressão que empurra o endoplasma para a ponta.</p></div>
+        <div class="ctl" id="c-adhesion"><div class="row"><label for="adhesion">Adesão ao substrato</label><output id="o-adhesion"></output></div>
+          <input type="range" id="adhesion" min="0" max="1" step="0.01" value="0.6">
+          <p>Fração da força ativa transmitida ao substrato. Em zero, a célula deforma mas não sai do lugar.</p></div>
+        <div class="ctl" id="c-gelation"><div class="row"><label for="gelation">Gelificação (rede de actina)</label><output id="o-gelation"></output></div>
+          <input type="range" id="gelation" min="0" max="1" step="0.01" value="0.5">
+          <p>Velocidade com que o sol vira gel junto à membrana. Forma o tubo ectoplasmático, que sustenta as adesões.</p></div>
+        <div class="ctl" id="c-flowSpeed"><div class="row"><label for="flowSpeed">Escala do fluxo do endoplasma</label><output id="o-flowSpeed"></output></div>
+          <input type="range" id="flowSpeed" min="0.3" max="2" step="0.05" value="1">
+          <p>Só altera o escoamento interno; a translocação depende da membrana e das adesões.</p></div>
+      </section>
+
+      <section class="sec">
+        <h2>Polaridade</h2>
+        <div class="ctl" id="c-chemotaxis"><div class="row"><label for="chemotaxis">Quimiotaxia</label><output id="o-chemotaxis"></output></div>
+          <input type="range" id="chemotaxis" min="0" max="1" step="0.01" value="0.6">
+          <p>Peso do gradiente (micropipeta ou bactérias) na escolha e no crescimento dos pseudópodes.</p></div>
+        <div class="ctl" id="c-pseudopodRate"><div class="row"><label for="pseudopodRate">Ramificação e tateio</label><output id="o-pseudopodRate"></output></div>
+          <input type="range" id="pseudopodRate" min="0" max="1" step="0.01" value="0.5">
+          <p>Frequência de ramos, bifurcações de ponta e lóbulos. Alto: a ameba tateia o ambiente com muitos braços.</p></div>
+        <div class="ctl" id="c-podW"><div class="row"><label for="podW">Largura dos braços</label><output id="o-podW"></output></div>
+          <input type="range" id="podW" min="0" max="1" step="0.01" value="0.5">
+          <p>Largura do braço principal. Ramos e lóbulos são proporcionalmente mais finos.</p></div>
+      </section>
+
+      <section class="sec">
+        <h2>Inibidores</h2>
+        <div class="toggles">
+          <button type="button" class="toggle" id="tBleb" aria-pressed="false"><span class="box"></span><strong>Blebistatina</strong><small>Inibe a miosina II. A contração posterior para; resta só a protrusão por polimerização.</small></button>
+          <button type="button" class="toggle" id="tCyto" aria-pressed="false"><span class="box"></span><strong>Citocalasina D</strong><small>Impede a polimerização de actina. O gel se desfaz e as adesões se perdem.</small></button>
+        </div>
+      </section>
+
+      <section class="sec">
+        <h2>Ambiente</h2>
+        <div class="toggles">
+          <button type="button" class="toggle env" id="tPrey" aria-pressed="true"><span class="box"></span><strong>Bactérias</strong><small>Presas em microcolônias. Liberam atraente; engolidas viram vacúolos digestivos.</small></button>
+          <button type="button" class="toggle env" id="tGrain" aria-pressed="false"><span class="box"></span><strong>Grãos de solo</strong><small>Obstáculos minerais; a ameba contorna e se espreme entre eles.</small></button>
+        </div>
+      </section>
+
+      <section class="sec">
+        <h2>Camadas</h2>
+        <div class="layers">
+          <label class="layer"><input type="checkbox" id="lGel" checked><span class="sw gel"></span>Gel e sol</label>
+          <label class="layer"><input type="checkbox" id="lPol" checked><span class="sw tip"></span>Ponta e uroide</label>
+          <label class="layer"><input type="checkbox" id="lAnc" checked><span class="sw anc"></span>Adesões</label>
+          <label class="layer"><input type="checkbox" id="lFlow"><span class="sw flow"></span>Fluxo</label>
+          <label class="layer"><input type="checkbox" id="lPod"><span class="sw pod"></span>Pseudópodes</label>
+          <label class="layer"><input type="checkbox" id="lAttr"><span class="sw attr"></span>Atraente</label>
+        </div>
+      </section>
+
+      <section class="sec">
+        <h2>Parâmetros</h2>
+        <div class="params">
+          <div class="row"><label for="seed">Semente</label><input type="number" id="seed" value="7" min="1" step="1" inputmode="numeric"><button class="btn" id="btnSeed" type="button">Aplicar</button></div>
+          <pre id="json"></pre>
+          <div class="row"><button class="btn" id="btnCopy" type="button">Copiar parâmetros</button><span class="note" id="copyMsg"></span></div>
+          <p class="note">Mesma semente e mesmos parâmetros reproduzem o mesmo movimento.</p>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════════
+   amoeba-core.js — núcleo de simulação do movimento ameboide (modelo sol-gel)
+
+   Convenção de integração igual à da DarwinRizo (classe VP): cada ponto guarda
+   a posição atual (x, y) e a anterior (ox, oy); velocidade = x − ox.
+   Não depende de DOM nem de variáveis globais do hospedeiro. O hospedeiro
+   (página de ajuste, ferramenta de animação, DarwinRizo, Miguelito) chama
+   step(env) e desenha a partir de nodes, particles e pods.
+
+   Modelo (Mast, atualizado com a leitura molecular):
+   • Membrana = anel de nós com restrição de ÁREA (volume conservado).
+   • Córtex posterior contrai (miosina II): os segmentos traseiros encurtam,
+     a área cai e a pressão empurra a membrana onde o córtex é fraco — a ponta
+     do pseudópode (calota hialina, sem gel recém-formado).
+   • Gelificação: nós e partículas junto à membrana viram gel com o tempo
+     (rede de actina); na ponta, o córtex ainda é sol. No uroide, o gel solata.
+   • Adesão ("embreagem"): nós em gel ancoram no substrato. As forças internas
+     não deslocam o centro da célula (baixo número de Reynolds, sem força
+     externa); só as âncoras transmitem tração. Sem adesão, a célula deforma
+     mas não sai do lugar.
+   • Remalhamento: segmentos esticados na ponta ganham nós novos (membrana nova,
+     ainda sol); segmentos encurtados no uroide perdem nós. É a esteira
+     ectoplasma → endoplasma.
+   • Endoplasma: partículas em estado sol fluem para a ponta, com velocidade
+     amarrada ao avanço real da ponta; ao chegar à calota, desviam para os
+     lados (fluxo em fonte) e gelificam no tubo ectoplasmático, que fica
+     parado em relação ao substrato.
+   ═══════════════════════════════════════════════════════════════════════ */
+(function (root) {
+  'use strict';
+
+  const TAU = Math.PI * 2;
+  const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+  function angDiff(a, b) { let d = a - b; while (d > Math.PI) d -= TAU; while (d < -Math.PI) d += TAU; return d; }
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  const DEFAULTS = {
+    radius: 60,          // raio inicial (px)
+    nodeSpacing: 8,      // comprimento de repouso de um segmento de membrana (px)
+    particles: 380,      // inclusões do citoplasma (grânulos, cristais, vacúolos)
+    contraction: 0.6,    // miosina II no córtex posterior (0–1)
+    adhesion: 0.6,       // força das adesões ao substrato, a "embreagem" (0–1)
+    gelation: 0.5,       // taxa de gelificação sol → gel (0–1); 0 = citocalasina
+    chemotaxis: 0.6,     // peso do gradiente quimiotático (0–1)
+    pseudopodRate: 0.5,  // frequência de novos pseudópodes (0–1)
+    podWidth: 20,        // meia-largura do braço principal ao longo da membrana (px)
+    ectoThickness: 8,    // espessura do tubo ectoplasmático (px)
+    capDepth: 8,         // profundidade da calota hialina (px)
+    minThickness: 28,    // espessura mínima de qualquer trecho da célula (px)
+    flowSpeed: 1.0,      // escala do fluxo do endoplasma
+    iterations: 6,       // iterações das restrições por passo (VIT na DarwinRizo)
+    maxNodes: 220,
+    minNodes: 16,
+    seed: 7
+  };
+
+  class Amoeba {
+    constructor(x, y, opts) {
+      this.p = Object.assign({}, DEFAULTS, opts || {});
+      this.rng = mulberry32((this.p.seed >>> 0) || 1);
+      this.t = 0;
+      this.L0 = this.p.nodeSpacing;
+      this.nodes = [];
+      this.particles = [];
+      this.pods = [];
+      const R = this.p.radius;
+      const n = Math.max(this.p.minNodes, Math.round(TAU * R / this.L0));
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * TAU;
+        this.nodes.push(this._node(x + Math.cos(a) * R, y + Math.sin(a) * R, 0.9));
+      }
+      this.A0 = this.geom().A;
+      this._initParticles(x, y, R);
+      const g = this.geom();
+      this._prevC = { x: g.x, y: g.y };
+      this.metrics = { clutch: 0, speed: 0, vx: 0, vy: 0, endoSpeed: 0, ratio: 0, pressure: 0,
+                       tipSpeed: 0, heading: this.rng() * TAU, nodeCount: n, anchors: 0, sense: 0 };
+      this._normals();
+      this.counts = { engulfed: 0, digested: 0, systoles: 0 };
+      this.tips = [];
+      this._polar = 0.5;
+    }
+
+    setParams(o) { Object.assign(this.p, o); }
+
+    _node(x, y, gel) {
+      return { x, y, ox: x, oy: y, sx: x, sy: y, gel, tip: 0, rear: 0, retr: 0, fx: 0, fy: 0, pdx: 0, pdy: 0, hit: false, tl: 0,
+               anch: false, ax: 0, ay: 0, nx: 0, ny: 0, th: 0 };
+    }
+
+    _gauss() { const r = this.rng; return (r() + r() + r() + r() - 2) * 1.2; }
+
+    _initParticles(cx, cy, R) {
+      const P = this.p, rng = this.rng;
+      const put = (type, r, gelBias) => {
+        let x, y, tries = 0;
+        do {
+          const a = rng() * TAU, d = Math.sqrt(rng()) * (R - r - 4);
+          x = cx + Math.cos(a) * d; y = cy + Math.sin(a) * d; tries++;
+        } while (tries < 20 && this.particles.some(q => Math.hypot(q.x - x, q.y - y) < q.r + r));
+        const edge = R - Math.hypot(x - cx, y - cy);
+        this.particles.push({ type, x, y, vx: 0, vy: 0, r, u: rng(),
+          gel: gelBias != null ? gelBias : (edge < P.ectoThickness + r ? 1 : 0),
+          phase: rng(), digest: 0, digestMax: 0, spin: rng() * TAU });
+      };
+      put('nucleus', 10, 0);
+      put('cv', 3, 0);
+      const nVac = Math.round(P.particles * 0.035);
+      const nCry = Math.round(P.particles * 0.14);
+      for (let i = 0; i < nVac; i++) put('vacuole', 3 + rng() * 2.2);
+      for (let i = 0; i < nCry; i++) put('crystal', 1.5 + rng() * 0.6);
+      const rest = Math.max(0, P.particles - nVac - nCry);
+      for (let i = 0; i < rest; i++) put('granule', 1.2 + rng() * 1.1);
+    }
+
+    /* Área com sinal e centróide de área do polígono da membrana */
+    geom() {
+      const N = this.nodes, n = N.length;
+      let A = 0, cx = 0, cy = 0;
+      for (let i = 0; i < n; i++) {
+        const a = N[i], b = N[(i + 1) % n];
+        const cr = a.x * b.y - b.x * a.y;
+        A += cr; cx += (a.x + b.x) * cr; cy += (a.y + b.y) * cr;
+      }
+      A *= 0.5;
+      if (Math.abs(A) < 1e-6) return { A: 0, x: N[0].x, y: N[0].y };
+      return { A, x: cx / (6 * A), y: cy / (6 * A) };
+    }
+
+    _normals() {
+      const N = this.nodes, n = N.length;
+      for (let i = 0; i < n; i++) {
+        const a = N[(i - 1 + n) % n], b = N[i], c = N[(i + 1) % n];
+        let ex = b.x - a.x, ey = b.y - a.y, fx = c.x - b.x, fy = c.y - b.y;
+        const l1 = Math.hypot(ex, ey) || 1, l2 = Math.hypot(fx, fy) || 1;
+        let nx = ey / l1 + fy / l2, ny = -ex / l1 - fx / l2;
+        const l = Math.hypot(nx, ny) || 1;
+        b.nx = nx / l; b.ny = ny / l;
+      }
+    }
+
+    pointInside(x, y) {
+      const N = this.nodes, n = N.length;
+      let ins = false;
+      for (let i = 0, j = n - 1; i < n; j = i++) {
+        const a = N[i], b = N[j];
+        if ((a.y > y) !== (b.y > y) && x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x) ins = !ins;
+      }
+      return ins;
+    }
+
+    /* Aresta mais próxima de um ponto: distância, índice, parâmetro e normal externa */
+    nearestEdge(x, y, out) {
+      const N = this.nodes, n = N.length;
+      let bd = Infinity, bi = 0, bt = 0;
+      for (let i = 0; i < n; i++) {
+        const a = N[i], b = N[(i + 1) % n];
+        const ex = b.x - a.x, ey = b.y - a.y, l2 = ex * ex + ey * ey || 1e-9;
+        const t = clamp(((x - a.x) * ex + (y - a.y) * ey) / l2, 0, 1);
+        const px = a.x + ex * t, py = a.y + ey * t;
+        const d = (x - px) * (x - px) + (y - py) * (y - py);
+        if (d < bd) { bd = d; bi = i; bt = t; }
+      }
+      const a = N[bi], b = N[(bi + 1) % n];
+      const ex = b.x - a.x, ey = b.y - a.y, l = Math.hypot(ex, ey) || 1;
+      out.d = Math.sqrt(bd); out.i = bi; out.t = bt;
+      out.px = a.x + ex * bt; out.py = a.y + ey * bt;
+      out.nx = ey / l; out.ny = -ex / l;           // normal externa (polígono com área positiva)
+      out.tip = a.tip * (1 - bt) + b.tip * bt;
+      out.rear = a.rear * (1 - bt) + b.rear * bt;
+      return out;
+    }
+
+    /* ── Pseudópodes: braços que crescem, tateiam, ramificam e recolhem ──
+       Cada pseudópode é um foco de polimerização preso a um ponto da membrana
+       (o nó-ponta) e cresce na própria direção, que oscila (tateio), é puxada
+       pelo gradiente e desviada por obstáculos. Ciclo de vida: crescer →
+       sustentar → retrair (miosina recolhe o braço). Novos focos nascem nos
+       flancos de um braço existente (ramificação) ou no corpo. O braço mais
+       bem alinhado ao gradiente se renova e vira o pseudópode-guia. */
+    _newPod(node, dir, s, gen) {
+      const r = this.rng, P = this.p;
+      gen = gen || 0;
+      // geração 0 = braço principal; 1 = ramo; 2 = lóbulo (contorno nodoso)
+      const w = P.podWidth * [1, 0.7, 0.45][gen];
+      const f = [1, 0.55, 0.28][gen];
+      return { node, dir, s: clamp(s, 0.08, 1), gen, w, age: 0, rAge: 0, phase: 'grow', amp: 0,
+               grow: (160 + r() * 220) * f, hold: (60 + r() * 140) * f, rDur: (110 + r() * 90) * Math.max(0.45, f),
+               side: r() < 0.5 ? -1 : 1, lx: node.x, ly: node.y, idx: this.nodes.indexOf(node), lead: false, str: 0, al: 0 };
+    }
+
+    /* ── Sensor quimiotático: direção e intensidade (0–1) do gradiente num ponto ──
+       env.gradient(x, y) → vetor cuja norma já é a resposta da célula (0–1);
+       env.target {x, y} é o caso simples de uma fonte única de intensidade máxima. */
+    _sense(env, x, y) {
+      if (env && env.gradient) {
+        const g = env.gradient(x, y), m = g ? Math.hypot(g.x, g.y) : 0;
+        return m > 1e-6 ? { ang: Math.atan2(g.y, g.x), str: clamp(m, 0, 1) } : null;
+      }
+      if (env && env.target) return { ang: Math.atan2(env.target.y - y, env.target.x - x), str: 1 };
+      return null;
+    }
+
+    _updatePods(env, c) {
+      const P = this.p, rng = this.rng, N = this.nodes, n = N.length, pods = this.pods;
+      const cs = this._sense(env, c.x, c.y);
+      this.metrics.sense = cs ? cs.str : 0;
+      const actin = Math.min(1, P.gelation * 2);
+
+      // reencontra o nó-ponta de cada foco (a membrana é remalhada a cada passo)
+      for (const k of pods) {
+        let i = N.indexOf(k.node);
+        if (i < 0) {
+          let bd = Infinity;
+          for (let j = 0; j < n; j++) { const d = (N[j].x - k.lx) ** 2 + (N[j].y - k.ly) ** 2; if (d < bd) { bd = d; i = j; } }
+        }
+        const ca = Math.cos(k.dir), sa = Math.sin(k.dir), win = k.gen === 0 ? 4 : 0;   // ramos e lóbulos ficam presos ao próprio nó (não escorregam para a ponta-mãe)
+        let best = i, bv = -Infinity;
+        for (let o = -win; o <= win; o++) {
+          const j = (i + o + n) % n, v = N[j].x * ca + N[j].y * sa;
+          if (v > bv) { bv = v; best = j; }
+        }
+        k.idx = best; k.node = N[best]; k.lx = k.node.x; k.ly = k.node.y;
+      }
+
+      // dois focos na mesma ponta viram um só (o maior absorve o outro)
+      for (let i = 0; i < pods.length; i++) for (let j = pods.length - 1; j > i; j--) {
+        const a = pods[i], b = pods[j];
+        if (a.phase === 'retract' || b.phase === 'retract') continue;
+        let d = Math.abs(a.idx - b.idx); d = Math.min(d, n - d);
+        if (d <= Math.max(1, Math.round(Math.min(a.w, b.w) / (2 * this.L0)))) {
+          const [keep, drop] = (a.gen < b.gen || (a.gen === b.gen && a.s >= b.s)) ? [a, b] : [b, a];
+          keep.s = Math.max(a.s, b.s);
+          pods.splice(pods.indexOf(drop), 1); if (drop === a) { i--; break; }
+        }
+      }
+
+      // guia = braço principal ativo de maior mérito: força acumulada + alinhamento ao gradiente
+      // (com histerese, para o guia não trocar a cada passo)
+      const merit = k => k.s + 0.8 * k.str * Math.max(0, k.al || 0) + (k.lead ? 0.15 : 0);
+      let lead = null;
+      for (const k of pods) if (k.phase !== 'retract' && k.gen === 0 && (!lead || merit(k) > merit(lead))) lead = k;
+
+      const sm = t => { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); };
+      for (const k of pods) {
+        k.age++; k.lead = k === lead;
+        const nd = k.node;
+        // cada pseudópode lê o gradiente na própria ponta
+        let align = 0;
+        const g = this._sense(env, nd.x, nd.y);
+        k.str = g ? g.str : 0;
+        if (g) {
+          align = Math.cos(angDiff(k.dir, g.ang));
+          k.al = align;
+          k.dir += P.chemotaxis * g.str * (k.gen ? 0.012 : 0.024) * Math.sin(angDiff(g.ang, k.dir));
+        }
+        // tateio: a direção oscila; ramos e lóbulos oscilam mais
+        k.dir += (rng() - 0.5) * (0.12 + 0.08 * k.gen) * (0.25 + P.pseudopodRate);
+        k.dir += 0.03 * Math.sin(angDiff(Math.atan2(nd.ny, nd.nx), k.dir));
+        // obstáculo na ponta: desvia para um lado e tende a ramificar
+        if (nd.hit) {
+          k.dir += k.side * 0.22;
+          // contornando o grão para longe do gradiente: o braço desiste e recolhe
+          if (g && g.str > 0.1 && Math.cos(angDiff(k.dir, g.ang)) < -0.05 && k.phase !== 'retract') { k.phase = 'retract'; k.rAge = 0; }
+          if (rng() < 0.05 && pods.length < 14 && k.gen < 2) {
+            const j = (k.idx - k.side * 3 + n) % n;
+            pods.push(this._newPod(N[j], k.dir - k.side * 0.9, k.s * 0.8, k.gen + 1));
+          }
+        }
+        const gain = P.chemotaxis * k.str * align * 0.9 + (k.lead ? 0.35 : -0.05) - 0.1;
+        k.s = clamp(k.s + 0.006 * gain, 0.06, 1);
+
+        if (k.phase === 'grow' && k.age > k.grow) k.phase = 'hold';
+        if (k.phase === 'hold' && k.age > k.grow + k.hold) { k.phase = 'retract'; k.rAge = 0; }
+        const perim = this.metrics.perimRatio || 1;
+        if (k.lead && k.phase === 'hold' && perim < 2.0 && (k.str > 0.15 ? align > 0.2 : rng() < 0.004)) { k.phase = 'grow'; k.age = k.grow * 0.4; }
+        // reserva de membrana no limite: nenhum braço continua crescendo
+        if (perim > 2.15 && k.phase === 'grow') { k.phase = 'hold'; k.age = Math.max(k.age, k.grow); }
+        if (k.phase === 'retract') k.rAge++;
+        k.amp = k.phase === 'grow' ? sm(k.age / (20 + 25 * (k.w / P.podWidth))) : k.phase === 'hold' ? 1 : 1 - sm(k.rAge / k.rDur);
+      }
+      for (let i = pods.length - 1; i >= 0; i--) if (pods[i].phase === 'retract' && pods[i].rAge > pods[i].rDur) pods.splice(i, 1);
+
+      // competição entre pseudópodes: um vence, o outro recolhe
+      // (a) dois braços em lados opostos de um grão: o mais fraco cede (a célula não abraça o grão)
+      // (b) reserva de membrana quase esgotada: o braço não-guia mais fraco recolhe
+      const score = k => k.s * (0.5 + 0.5 * k.amp) + 0.8 * k.str * Math.max(0, k.al || 0) + (k.lead ? 0.3 : 0);
+      const act = pods.filter(k => k.phase !== 'retract' && k.gen < 2 && k.age > 15);
+      const obs = this._obs;
+      if (obs && obs.length && act.length > 1) {
+        const near = obs.filter(o => Math.hypot(o.x - c.x, o.y - c.y) < 350 && !this.pointInside(o.x, o.y));
+        for (let i = 0; i < act.length; i++) for (let j = i + 1; j < act.length; j++) {
+          const A = act[i], B = act[j];
+          if (A.phase === 'retract' || B.phase === 'retract') continue;
+          const a = A.node, b = B.node, ex = b.x - a.x, ey = b.y - a.y, l2 = ex * ex + ey * ey || 1e-9;
+          for (const o of near) {
+            const t = ((o.x - a.x) * ex + (o.y - a.y) * ey) / l2;
+            if (t <= 0.05 || t >= 0.95) continue;
+            if (Math.hypot(a.x + ex * t - o.x, a.y + ey * t - o.y) < o.r * 0.95) {
+              const loser = score(A) < score(B) ? A : B;
+              loser.phase = 'retract'; loser.rAge = 0;
+              break;
+            }
+          }
+        }
+      }
+      if ((this.metrics.perimRatio || 1) > 2.15) {
+        const cand = act.filter(k => !k.lead && k.phase !== 'retract');
+        if (cand.length) { const w = cand.reduce((m, k) => score(k) < score(m) ? k : m); w.phase = 'retract'; w.rAge = 0; }
+      }
+
+      // nascimento de focos: ramo no flanco, bifurcação da ponta, lóbulo, ou braço novo no corpo
+      if (rng() < P.pseudopodRate * 0.12 * actin && pods.length < 20 && (this.metrics.perimRatio || 1) < 1.9) {
+        const act = pods.filter(k => k.phase !== 'retract' && k.age > 30 && k.gen < 2);
+        const roll = rng();
+        if (act.length && roll < 0.36) {
+          // ramo/lóbulo saindo do flanco, um pouco atrás da ponta
+          const par = act[(rng() * act.length) | 0], side = rng() < 0.5 ? -1 : 1;
+          const back = Math.max(2, Math.round((0.6 + rng() * 1.4) * par.w / this.L0));
+          const j = (par.idx - side * back + n) % n;
+          pods.push(this._newPod(N[j], par.dir + side * (0.5 + rng() * 0.7), par.s * 0.7, par.gen + 1));
+        } else if (act.length && roll < 0.52) {
+          // bifurcação: a ponta se divide em dois dedos e o foco-mãe para de crescer
+          const par = act[(rng() * act.length) | 0];
+          if (par.phase === 'hold' || par.age > par.grow * 0.5) {
+            const o = Math.max(1, Math.round(0.4 * par.w / this.L0)), spread = 0.35 + rng() * 0.35;
+            const g = Math.min(2, par.gen + 1);
+            pods.push(this._newPod(N[(par.idx + o) % n], par.dir - spread, par.s * 0.85, g));
+            pods.push(this._newPod(N[(par.idx - o + n) % n], par.dir + spread, par.s * 0.85, g));
+            if (!par.lead) { par.phase = 'hold'; par.age = Math.max(par.age, par.grow + par.hold * 0.7); }
+          }
+        } else if (roll < 0.86 || pods.filter(k => k.gen === 0 && k.phase !== 'retract').length >= 3) {
+          // lóbulo pequeno em qualquer ponto ativo da membrana (contorno nodoso)
+          const cand = N.filter(nd => nd.rear < 0.25 && nd.retr < 0.1);
+          if (cand.length) {
+            const nd = cand[(rng() * cand.length) | 0];
+            pods.push(this._newPod(nd, Math.atan2(nd.ny, nd.nx) + this._gauss() * 0.25, 0.3, 2));
+          }
+        } else {
+          // braço principal novo na metade dianteira do corpo
+          const front = N.filter(nd => nd.rear < 0.12 && nd.tip < 0.2);
+          if (front.length) {
+            const nd = front[(rng() * front.length) | 0];
+            let d = Math.atan2(nd.ny, nd.nx) + this._gauss() * 0.3;
+            const g = this._sense(env, nd.x, nd.y);
+            if (g && rng() < P.chemotaxis * g.str) d += 0.5 * angDiff(g.ang, d);
+            pods.push(this._newPod(nd, d, 0.4, 0));
+          }
+        }
+      }
+      // sem braço-guia ativo: forma um novo (é ele que define a cauda que vai contrair)
+      if (pods.length < 20 && !pods.some(k => k.phase !== 'retract' && k.gen === 0)) {
+        const ha = cs && cs.str > 0.05 ? cs.ang : this.metrics.heading + this._gauss() * 0.5;
+        let best = N[0], bv = -Infinity;
+        for (const nd of N) { const v = (nd.x - c.x) * Math.cos(ha) + (nd.y - c.y) * Math.sin(ha); if (v > bv) { bv = v; best = nd; } }
+        pods.push(this._newPod(best, ha, 0.6, 0));
+      }
+
+      // polarização: alta quando um braço guia domina (com gradiente); baixa ao tatear livremente
+      const pol = lead ? clamp(lead.s * (0.5 + 0.3 * (cs ? cs.str : 0)), 0, 1) : 0.3;
+      this._polar += ((this._polar === undefined ? pol : pol) - (this._polar || 0)) * 0.02;
+      let hx = 0, hy = 0;
+      for (const k of pods) if (k.phase !== 'retract') { const w = k.amp * k.s * (k.gen ? 0.3 : 1); hx += Math.cos(k.dir) * w; hy += Math.sin(k.dir) * w; }
+      if (hx * hx + hy * hy > 1e-9) this.metrics.heading = Math.atan2(hy, hx);
+    }
+
+    /* ── Estado de cada nó: ponta (tip), retração de braço, uroide, gel do córtex ── */
+    _updateNodes(c) {
+      const P = this.p, N = this.nodes, n = N.length, main = this.metrics.heading;
+      // comprimento de arco acumulado, para medir distâncias AO LONGO da membrana
+      const arc = this._arc || (this._arc = []);
+      arc.length = n; let L = 0;
+      for (let i = 0; i < n; i++) { arc[i] = L; const a = N[i], b = N[(i + 1) % n]; L += Math.hypot(b.x - a.x, b.y - a.y); }
+      let smax = 0.05; for (const k of this.pods) if (k.phase !== 'retract') smax = Math.max(smax, k.s);
+      for (const nd of N) { nd.tip = 0; nd.retr = 0; nd.pdx = nd.nx; nd.pdy = nd.ny; }
+      for (const k of this.pods) {
+        const w = k.w, w2 = 2 * w * w, wr2 = 2 * (1.6 * w) ** 2;
+        const i0 = k.idx, a0 = arc[i0];
+        const reach = Math.ceil((k.phase === 'retract' ? 1.6 : 1) * w * 2.6 / this.L0) + 1;
+        const gw = [1, 0.95, 0.85][k.gen];
+        for (let o = -reach; o <= reach; o++) {
+          const j = (i0 + o + n) % n;
+          let d = Math.abs(arc[j] - a0); d = Math.min(d, L - d);
+          const nd = N[j];
+          if (k.phase === 'retract') {
+            const r = Math.exp(-d * d / wr2) * clamp(k.rAge / 25, 0, 1) * (0.5 + 0.5 * k.s) * gw;
+            if (r > nd.retr) nd.retr = r;
+          } else {
+            const t = k.amp * (0.35 + 0.65 * k.s / smax) * gw * Math.exp(-d * d / w2);
+            if (t > nd.tip) { nd.tip = t; nd.pdx = Math.cos(k.dir); nd.pdy = Math.sin(k.dir); }
+          }
+        }
+      }
+      // uroide: tudo o que está atrás do centro, ao longo da direção de avanço
+      const hx = Math.cos(main), hy = Math.sin(main);
+      let back = 1;
+      for (const nd of N) back = Math.max(back, -((nd.x - c.x) * hx + (nd.y - c.y) * hy));
+      this.metrics.perimRatio = L / (this._perim0 || (this._perim0 = L));
+      // com braço-guia, o uroide também é medido AO LONGO da membrana a partir da ponta-guia:
+      // numa célula enrolada em "C" em volta de um grão, a cauda continua sendo reconhecida
+      const lead = this.pods.find(k => k.lead && k.phase !== 'retract');
+      const a0 = lead ? arc[lead.idx] : 0, half = L / 2;
+      const sm = t => { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); };
+      for (let i = 0; i < n; i++) {
+        const nd = N[i];
+        nd.tip = clamp(nd.tip, 0, 1);
+        nd.th = Math.atan2(nd.y - c.y, nd.x - c.x);
+        const up = clamp(-((nd.x - c.x) * hx + (nd.y - c.y) * hy) / back, 0, 1);
+        let u = up * (0.4 + 0.6 * up);
+        nd.tl = 0;
+        if (lead) {
+          let d = Math.abs(arc[i] - a0); d = Math.min(d, L - d);
+          const ua = sm((d / half - 0.5) / 0.5);
+          u = Math.max(u * 0.6, ua);
+          // sentido, ao longo da membrana, que leva ao braço-guia pelo caminho mais curto
+          const fwd = (a0 - arc[i] + L) % L;
+          nd.tl = fwd < L - fwd ? 1 : -1;
+        }
+        nd.rear = u * (1 - nd.tip) * (0.45 + 0.55 * this._polar);
+        // córtex: gelifica fora da ponta; na ponta permanece sol (calota hialina); renovação lenta
+        nd.gel += P.gelation * 0.06 * (1 - nd.gel) * (1 - nd.tip) - 0.05 * nd.tip * nd.gel - 0.004 * nd.gel;
+        nd.gel = clamp(nd.gel, 0, 1);
+      }
+    }
+
+    /* ── Forças na membrana (regime viscoso: velocidade = força / atrito) ──
+       Ativas: protrusão nas pontas dos braços (polimerização + pressão gerada
+       pela contração posterior), retração no uroide e nos braços que recolhem
+       (miosina II). A fração que não é transmitida ao substrato pela adesão é
+       força interna: deforma a célula mas não desloca o centro (correção em step). */
+    _membraneForces() {
+      const P = this.p, N = this.nodes;
+      let gs = 0, gw = 0;
+      for (const nd of N) { const w = 1 - nd.tip; gs += nd.gel * w; gw += w; }
+      const gelMean = gw > 0 ? gs / gw : 0;
+      const clutch = clamp(P.adhesion * Math.min(1, gelMean * 1.6), 0, 1);
+      this.metrics.clutch = clutch;
+
+      const fRear = 0.85 * P.contraction;
+      // a membrana tem reserva limitada: perto do limite, a ponta perde força
+      const reserve = clamp((2.1 - (this.metrics.perimRatio || 1)) / 0.6, 0, 1);
+      const actin = Math.min(1, P.gelation * 2);
+      const fTip = (0.75 * P.contraction * (0.25 + 0.75 * actin) + 0.18 * actin) * reserve;
+      const fRet = 0.45 * (0.25 + P.contraction);
+      const n = N.length;
+      for (let i = 0; i < n; i++) {
+        const nd = N[i];
+        // a ponta avança na direção do braço (não só pela normal): é isso que estica o braço
+        const ft = fTip * nd.tip, fb = fRear * nd.rear + fRet * nd.retr;
+        nd.fx = ft * (0.6 * nd.pdx + 0.4 * nd.nx) - fb * nd.nx;
+        nd.fy = ft * (0.6 * nd.pdy + 0.4 * nd.ny) - fb * nd.ny;
+        // a cauda é puxada para frente AO LONGO do corpo (encurta a célula, não só a afina)
+        if (nd.tl) {
+          const q = N[(i + nd.tl + n) % n];
+          let tx = q.x - nd.x, ty = q.y - nd.y; const tl = Math.hypot(tx, ty) || 1;
+          const fa = 0.7 * fRear * nd.rear;
+          nd.fx += tx / tl * fa; nd.fy += ty / tl * fa;
+        }
+        const fm = Math.hypot(nd.fx, nd.fy);
+        if (fm > 1.1) { nd.fx *= 1.1 / fm; nd.fy *= 1.1 / fm; }
+      }
+      for (const nd of N) {
+        const mob = 1 / (1 + 4 * clutch * (nd.anch ? 1 : 0));
+        nd.x += nd.fx * mob; nd.y += nd.fy * mob;
+      }
+    }
+
+    /* ── Restrições passivas: área (volume), tensão de membrana, espaçamento, auto-contato ── */
+    _constraints() {
+      const P = this.p, N = this.nodes;
+      for (let it = 0; it < P.iterations; it++) {
+        const n = N.length;
+        // volume é restaurado aos poucos (no máx. ~0,4% por iteração): perda súbita não vira estilingue
+        const A = this.geom().A, C = clamp(A - this.A0, -0.004 * this.A0, 0.004 * this.A0);
+        let den = 0;
+        for (let i = 0; i < n; i++) {
+          const pv = N[(i - 1 + n) % n], nx = N[(i + 1) % n], nd = N[i];
+          nd._gx = 0.5 * (nx.y - pv.y); nd._gy = 0.5 * (pv.x - nx.x);
+          // volume sobrando (braços cresceram): recolhe no uroide e nos braços em retração;
+          // volume faltando: a membrana cede onde está ativa
+          nd._w = C > 0 ? (0.15 + 2 * nd.rear + 1.5 * nd.retr) * (1 - 0.85 * nd.tip)
+                        : 0.25 + 1.2 * nd.tip;
+          den += nd._w * (nd._gx * nd._gx + nd._gy * nd._gy);
+        }
+        if (den > 1e-9) {
+          const lam = (-C / den) * 0.8;
+          for (const nd of N) { nd.x += lam * nd._w * nd._gx; nd.y += lam * nd._w * nd._gy; }
+        }
+      }
+      // tensão (componente normal do laplaciano) e espaçamento (componente tangencial);
+      // a tensão sobe quando a reserva de membrana se esgota
+      const tens = 0.25 * clamp(((this.metrics.perimRatio || 1) - 1.8) / 0.6, 0, 1);
+      const n = N.length, tx = new Float64Array(n), ty = new Float64Array(n);
+      for (let i = 0; i < n; i++) {
+        const a = N[(i - 1 + n) % n], b = N[i], c = N[(i + 1) % n];
+        const lx = (a.x + c.x) * 0.5 - b.x, ly = (a.y + c.y) * 0.5 - b.y;
+        let ex = c.x - a.x, ey = c.y - a.y; const el = Math.hypot(ex, ey) || 1; ex /= el; ey /= el;
+        const lt = lx * ex + ly * ey;
+        const nlx = lx - lt * ex, nly = ly - lt * ey;
+        const kn = (0.03 + 0.12 * b.rear + 0.05 * b.retr) * (1 - 0.8 * b.tip) + tens;
+        tx[i] = b.x + nlx * kn + ex * lt * 0.4;
+        ty[i] = b.y + nly * kn + ey * lt * 0.4;
+      }
+      for (let i = 0; i < n; i++) { N[i].x = tx[i]; N[i].y = ty[i]; }
+      // auto-contato: braços vizinhos não se atravessam, e nenhum trecho do corpo
+      // afina abaixo de uma espessura mínima (o citoplasma não vira um fio)
+      const L0 = this.L0, mNear = 0.9 * L0, mFar = P.minThickness, far = 8;
+      for (let i = 0; i < n; i++) for (let j = i + 4; j < n; j++) {
+        const sep = Math.min(j - i, n - (j - i));
+        if (sep < 4) continue;
+        const m = sep >= far ? mFar : mNear, m2 = m * m;
+        const a = N[i], b = N[j], dx = b.x - a.x, dy = b.y - a.y, d2 = dx * dx + dy * dy;
+        if (d2 >= m2 || d2 < 1e-9) continue;
+        const d = Math.sqrt(d2), o = (m - d) / d * 0.25;
+        a.x -= dx * o; a.y -= dy * o; b.x += dx * o; b.y += dy * o;
+      }
+    }
+
+    /* ── Remalhamento: membrana nova na ponta, removida no uroide ── */
+    _remesh() {
+      const P = this.p, N = this.nodes, L0 = this.L0;
+      // com a reserva de membrana esgotada, só divide segmentos muito esticados
+      // (nunca deixa um segmento virar uma corda longa, que atravessaria obstáculos)
+      const splitAt = (this.metrics.perimRatio || 1) < 2.3 ? 1.5 * L0 : 2 * L0;
+      for (let i = 0; i < N.length && N.length < P.maxNodes; i++) {
+        const a = N[i], b = N[(i + 1) % N.length];
+        if (Math.hypot(b.x - a.x, b.y - a.y) > splitAt) {
+          const nn = this._node((a.x + b.x) / 2, (a.y + b.y) / 2, Math.min(a.gel, b.gel) * 0.5);
+          nn.ox = (a.ox + b.ox) / 2; nn.oy = (a.oy + b.oy) / 2;
+          nn.sx = (a.sx + b.sx) / 2; nn.sy = (a.sy + b.sy) / 2;
+          nn.tip = (a.tip + b.tip) / 2; nn.rear = (a.rear + b.rear) / 2; nn.retr = (a.retr + b.retr) / 2;
+          nn.nx = (a.nx + b.nx) / 2; nn.ny = (a.ny + b.ny) / 2;
+          N.splice(i + 1, 0, nn); i++;
+        }
+      }
+      for (let i = 0; i < N.length && N.length > P.minNodes; i++) {
+        const j = (i + 1) % N.length, a = N[i], b = N[j];
+        if (Math.hypot(b.x - a.x, b.y - a.y) < 0.55 * L0) {
+          a.x = (a.x + b.x) / 2; a.y = (a.y + b.y) / 2;
+          a.ox = (a.ox + b.ox) / 2; a.oy = (a.oy + b.oy) / 2;
+          a.sx = (a.sx + b.sx) / 2; a.sy = (a.sy + b.sy) / 2;
+          a.gel = Math.max(a.gel, b.gel);
+          if (!a.anch && b.anch) { a.anch = true; a.ax = b.ax; a.ay = b.ay; }
+          for (const k of this.pods) if (k.node === b) k.node = a;
+          N.splice(j, 1);
+          if (j < i) i--;
+        }
+      }
+    }
+
+    /* ── Desembaraço: se a membrana se cruzar, o laço menor é cortado ── */
+    _untangle() {
+      const N = this.nodes;
+      for (let pass = 0; pass < 3; pass++) {
+        const n = N.length; let fixed = false;
+        for (let i = 0; i < n && !fixed; i++) {
+          const a = N[i], b = N[(i + 1) % n];
+          const minx = Math.min(a.x, b.x), maxx = Math.max(a.x, b.x), miny = Math.min(a.y, b.y), maxy = Math.max(a.y, b.y);
+          for (let j = i + 2; j < n; j++) {
+            if (i === 0 && j === n - 1) continue;
+            const c = N[j], d = N[(j + 1) % n];
+            if (Math.max(c.x, d.x) < minx || Math.min(c.x, d.x) > maxx || Math.max(c.y, d.y) < miny || Math.min(c.y, d.y) > maxy) continue;
+            const r1 = b.x - a.x, r2 = b.y - a.y, s1 = d.x - c.x, s2 = d.y - c.y;
+            const den = r1 * s2 - r2 * s1;
+            if (Math.abs(den) < 1e-9) continue;
+            const t = ((c.x - a.x) * s2 - (c.y - a.y) * s1) / den, u = ((c.x - a.x) * r2 - (c.y - a.y) * r1) / den;
+            if (t <= 0 || t >= 1 || u <= 0 || u >= 1) continue;
+            // nós i+1..j formam um laço; o complemento é o outro. Remove o menor.
+            const px = a.x + r1 * t, py = a.y + r2 * t;
+            // dos dois laços, mantém o de maior área positiva (o corpo); o outro é dobra ou buraco
+            const loopIn = N.slice(i + 1, j + 1), loopOut = N.slice(j + 1).concat(N.slice(0, i + 1));
+            const area = poly => { let s2 = px * poly[0].y - poly[0].x * py; for (let q = 0; q < poly.length; q++) { const u = poly[q], v = q + 1 < poly.length ? poly[q + 1] : { x: px, y: py }; s2 += u.x * v.y - v.x * u.y; } return s2 / 2; };
+            let kept = area(loopIn) > area(loopOut) ? loopIn : loopOut;
+            // se o laço mantido englobaria um grão (braços que se fecharam atrás dele),
+            // descruza invertendo o trecho i+1..j em vez de cortar: nenhum grão fica dentro
+            const obs = this._obs;
+            if (obs && obs.length) {
+              const inside = (poly, x, y) => { let ins = false; for (let p = 0, q = poly.length - 1; p < poly.length; q = p++) { const u = poly[p], v = poly[q]; if ((u.y > y) !== (v.y > y) && x < ((v.x - u.x) * (y - u.y)) / (v.y - u.y) + u.x) ins = !ins; } return ins; };
+              if (obs.some(o => inside(kept, o.x, o.y))) {
+                const seg = N.slice(i + 1, j + 1).reverse();
+                for (let q = 0; q < seg.length; q++) N[i + 1 + q] = seg[q];
+                fixed = true; break;
+              }
+            }
+            if (kept.length < this.p.minNodes) { fixed = true; break; }
+            const nn = this._node(px, py, (a.gel + c.gel) / 2);
+            kept.push(nn);
+            for (const k of this.pods) if (!kept.includes(k.node)) k.node = nn;
+            N.length = 0; for (const q of kept) N.push(q);
+            fixed = true; break;
+          }
+        }
+        if (!fixed) break;
+      }
+    }
+
+    /* ── Adesões: formam-se no córtex em gel atrás das pontas e soltam no uroide ── */
+    _anchors() {
+      const P = this.p, rng = this.rng;
+      let count = 0;
+      for (const nd of this.nodes) {
+        if (nd.anch) {
+          if (nd.rear > 0.32 || nd.retr > 0.3 || nd.tip > 0.25 || nd.gel < 0.2 || P.adhesion <= 0.02 || Math.hypot(nd.ax - nd.x, nd.ay - nd.y) > 3 + 10 * P.adhesion) nd.anch = false;
+          else count++;
+        } else if (P.adhesion > 0.02 && nd.gel > 0.4 && nd.rear < 0.22 && nd.tip < 0.3 && nd.retr < 0.2 && rng() < 0.1) {
+          nd.anch = true; nd.ax = nd.x; nd.ay = nd.y;
+        }
+      }
+      this.metrics.anchors = count;
+    }
+
+    /* ── Obstáculos (grãos de solo): colisão de nós E de segmentos da membrana ──
+       Um grão cujo centro já está dentro da célula (situação que não deveria
+       ocorrer) é ignorado até sair, para nunca virar âncora. */
+    _external(env) {
+      const N = this.nodes, n = N.length;
+      for (const nd of N) nd.hit = false;
+      if (!env) return;
+      const B = env.bounds;
+      const obs = env.obstacles ? env.obstacles.filter(o => !this.pointInside(o.x, o.y)) : null;
+      this.metrics.enclosed = env.obstacles ? env.obstacles.length - obs.length : 0;
+      if (obs && obs.length) for (let pass = 0; pass < 2; pass++) {
+        for (const nd of N) for (const o of obs) {
+          const dx = nd.x - o.x, dy = nd.y - o.y, d = Math.hypot(dx, dy), m = o.r + 1;
+          if (d < m && d > 1e-6) { nd.x = o.x + dx / d * m; nd.y = o.y + dy / d * m; nd.hit = true; }
+        }
+        // segmento que corta o grão: empurra as duas pontas para fora pelo ponto mais próximo
+        for (let i = 0; i < n; i++) {
+          const a = N[i], b = N[(i + 1) % n], ex = b.x - a.x, ey = b.y - a.y, l2 = ex * ex + ey * ey || 1e-9;
+          for (const o of obs) {
+            const t = clamp(((o.x - a.x) * ex + (o.y - a.y) * ey) / l2, 0, 1);
+            const px = a.x + ex * t, py = a.y + ey * t, dx = px - o.x, dy = py - o.y, d = Math.hypot(dx, dy), m = o.r + 1;
+            if (d >= m) continue;
+            let ux, uy;
+            if (d > 1e-6) { ux = dx / d; uy = dy / d; } else { const l = Math.sqrt(l2); ux = -ey / l; uy = ex / l; }
+            const push = m - d;
+            a.x += ux * push * (1 - t); a.y += uy * push * (1 - t);
+            b.x += ux * push * t; b.y += uy * push * t;
+            a.hit = b.hit = true;
+          }
+        }
+      }
+      if (B) for (const nd of N) { nd.x = clamp(nd.x, B.x0, B.x1); nd.y = clamp(nd.y, B.y0, B.y1); }
+    }
+
+    /* ── Passo completo ── */
+    step(env) {
+      const N = this.nodes;
+      this.t++;
+      this._obs = env && env.obstacles ? env.obstacles : null;
+      for (const nd of N) { nd.sx = nd.x; nd.sy = nd.y; nd.ox = nd.x; nd.oy = nd.y; }
+      const c0 = this.geom();
+      this._updatePods(env, c0);
+      this._updateNodes(c0);
+      this._normals();
+      this._membraneForces();
+      this._constraints();
+      // salvaguarda numérica: nenhum nó anda mais que 4 px num passo
+      for (const nd of N) {
+        const dx = nd.x - nd.sx, dy = nd.y - nd.sy, d = Math.hypot(dx, dy);
+        if (!(d <= 4)) { const f = d > 0 && isFinite(d) ? 4 / d : 0; nd.x = nd.sx + dx * f; nd.y = nd.sy + dy * f; }
+      }
+      this._remesh();
+      this._untangle();
+      // só a fração da força ativa transmitida pela embreagem desloca o centro;
+      // o restante é força interna (deforma a célula sem transladá-la)
+      const c1 = this.geom(), k = 1 - this.metrics.clutch;
+      const sx = (c0.x - c1.x) * k, sy = (c0.y - c1.y) * k;
+      for (const nd of N) { nd.x += sx; nd.y += sy; }
+      this._external(env);
+      this._anchors();
+      this._normals();
+
+      // velocidade de avanço da ponta (referencial do substrato)
+      let ts = 0, tw = 0;
+      for (const nd of N) if (nd.tip > 0.4) {
+        ts += ((nd.x - nd.sx) * nd.nx + (nd.y - nd.sy) * nd.ny) * nd.tip; tw += nd.tip;
+      }
+      const tip = tw > 0 ? ts / tw : 0;
+      this.metrics.tipSpeed += (tip - this.metrics.tipSpeed) * 0.05;
+
+      const c = this.geom();
+      this._stepParticles(env, c);
+      this._engulf(env);
+
+      const vx = c.x - this._prevC.x, vy = c.y - this._prevC.y;
+      this._prevC = { x: c.x, y: c.y };
+      const m = this.metrics;
+      m.vx += (vx - m.vx) * 0.03; m.vy += (vy - m.vy) * 0.03;
+      m.speed = Math.hypot(m.vx, m.vy);
+      m.pressure = (this.A0 - c.A) / this.A0;
+      m.nodeCount = N.length;
+      m.cx = c.x; m.cy = c.y;
+    }
+
+    _stepParticles(env, c) {
+      const P = this.p, N = this.nodes, parts = this.particles;
+      // ponto de chegada de cada braço = seu nó-ponta; braços em retração não recebem fluxo
+      const tips = [];
+      let tw = 0;
+      for (const k of this.pods) if (k.phase !== 'retract') { const r = k.w / P.podWidth, w = k.amp * k.s * r * r + 0.01; tips.push({ x: k.node.x, y: k.node.y, ang: k.dir, s: w }); tw += w; }
+      for (const t of tips) t.s /= tw || 1;
+      this.tips = tips;
+      // velocidade do endoplasma amarrada ao avanço da ponta (continuidade) + empuxo da contração
+      const U = P.flowSpeed * (0.25 + 0.3 * P.contraction + 1.8 * Math.max(0, this.metrics.tipSpeed));
+      const ecto = P.ectoThickness, cap = P.capDepth;
+      const ne = {};
+      let rearPt = null, rv = -Infinity;
+      const ha = this.metrics.heading;
+      for (const nd of N) { const v = -((nd.x - c.x) * Math.cos(ha) + (nd.y - c.y) * Math.sin(ha)); if (v > rv) { rv = v; rearPt = nd; } }
+
+      let eSum = 0, eN = 0;
+      const mdx = Math.cos(ha), mdy = Math.sin(ha);
+
+      for (let pi = parts.length - 1; pi >= 0; pi--) {
+        const p = parts[pi];
+        this.nearestEdge(p.x, p.y, ne);
+        const inside = this.pointInside(p.x, p.y);
+        const depth = inside ? ne.d : -ne.d;
+
+        if (p.type === 'granule' || p.type === 'crystal' || p.type === 'vacuole') {
+          if (depth < ecto + p.r && ne.tip < 0.35 && ne.rear < 0.4) p.gel += P.gelation * 0.08 * (1 - p.gel);
+          else if (depth < ecto * 0.6 + P.capDepth * ne.tip ** 3 + p.r + 2 && ne.tip >= 0.35) p.gel += P.gelation * 0.05 * (1 - p.gel);  // gelificação na zona de fonte
+          else if (ne.rear > 0.35) p.gel -= 0.07 * ne.rear * (0.3 + P.contraction) * p.gel;   // solação no uroide
+          else if (depth > ecto * 1.7) p.gel -= 0.025 * p.gel;
+          p.gel = clamp(p.gel, 0, 1);
+        } else p.gel = 0;
+
+        let tvx = 0, tvy = 0;
+        const sol = 1 - p.gel;
+        if (p.type === 'cv') {
+          // vacúolo contrátil migra para o uroide e pulsa (diástole lenta, sístole rápida)
+          const dx = rearPt.x - p.x, dy = rearPt.y - p.y, d = Math.hypot(dx, dy) || 1;
+          tvx = dx / d * 0.25; tvy = dy / d * 0.25;
+          p.phase += 1 / 420;
+          if (p.phase >= 1) { p.phase = 0; this.counts.systoles++; }
+          p.r = 2.5 + 6 * p.phase * p.phase;
+        } else if (sol > 0.05 && tips.length) {
+          let acc = 0, k = 0;
+          for (; k < tips.length - 1; k++) { acc += tips[k].s; if (p.u < acc) break; }
+          const T = tips[k];
+          const dx = T.x - p.x, dy = T.y - p.y, d = Math.hypot(dx, dy) || 1;
+          const typeF = p.type === 'nucleus' ? 0.55 : p.type === 'food' ? 0.8 : 1;
+          // perfil de escoamento: rápido no canal central, parado junto ao tubo de gel
+          const prof = clamp((depth - ecto * 0.5) / (ecto * 2.2), 0, 1);
+          const sp = U * sol * typeF * Math.min(1, d / 18) * (0.5 + 0.5 * prof);
+          tvx = dx / d * sp; tvy = dy / d * sp;
+          // fluxo em fonte: perto da calota, desvia para os lados e para dentro
+          if (depth < ecto + cap + 10 && ne.tip > 0.2) {
+            // lateral = componente de (partícula − ponta) perpendicular ao eixo do braço
+            const ax = Math.cos(T.ang), ay = Math.sin(T.ang);
+            let lx = p.x - T.x, ly = p.y - T.y; const along = lx * ax + ly * ay;
+            lx -= along * ax; ly -= along * ay;
+            const ll = Math.hypot(lx, ly) || 1;
+            const f = U * 0.9 * ne.tip;
+            tvx += lx / ll * f - ne.nx * f * 0.3; tvy += ly / ll * f - ne.ny * f * 0.3;
+          }
+        }
+        const relax = p.gel > 0.5 ? 0.35 : p.type === 'nucleus' ? 0.06 : 0.14;
+        p.vx += (tvx - p.vx) * relax; p.vy += (tvy - p.vy) * relax;
+        p.x += p.vx; p.y += p.vy;
+
+        if (p.type === 'food') {
+          p.digest++;
+          if (p.digest >= p.digestMax) {
+            parts.splice(pi, 1); this.counts.digested++;
+            if (env && env.onDigest) env.onDigest({ x: p.x, y: p.y });
+            continue;
+          }
+          const left = 1 - p.digest / p.digestMax;
+          p.r = 2 + 3 * Math.min(1, left * 2.5);
+        }
+        if (p.gel < 0.3 && (p.type === 'granule' || p.type === 'crystal')) {
+          eSum += p.vx * mdx + p.vy * mdy; eN++;
+        }
+      }
+      this.metrics.endoSpeed = eN ? eSum / eN : 0;
+      this.metrics.ratio = this.metrics.speed > 0.01 ? this.metrics.endoSpeed / this.metrics.speed : 0;
+
+      this._repel();
+      this._contain(env);
+    }
+
+    _repel() {
+      const P = this.particles, cs = 10, grid = new Map();
+      for (let i = 0; i < P.length; i++) {
+        const p = P[i], k = ((p.x / cs) | 0) * 73856093 ^ ((p.y / cs) | 0) * 19349663;
+        let a = grid.get(k); if (!a) grid.set(k, a = []); a.push(i);
+      }
+      for (let i = 0; i < P.length; i++) {
+        const p = P[i];
+        const reach = p.type === 'nucleus' ? 2 : 1;
+        const gx = (p.x / cs) | 0, gy = (p.y / cs) | 0;
+        for (let ox = -reach; ox <= reach; ox++) for (let oy = -reach; oy <= reach; oy++) {
+          const a = grid.get(((gx + ox) * 73856093) ^ ((gy + oy) * 19349663));
+          if (!a) continue;
+          for (const j of a) {
+            if (j <= i) continue;
+            const q = P[j];
+            const dx = q.x - p.x, dy = q.y - p.y, d2 = dx * dx + dy * dy, m = p.r + q.r + 0.6;
+            if (d2 >= m * m || d2 < 1e-9) continue;
+            const d = Math.sqrt(d2), o = (m - d) / d;
+            // gel pesa mais (rede de actina); o núcleo empurra o resto
+            const wp = (p.type === 'nucleus' ? 0.1 : 1) * (1 - 0.6 * p.gel);
+            const wq = (q.type === 'nucleus' ? 0.1 : 1) * (1 - 0.6 * q.gel);
+            const ws = wp + wq || 1;
+            p.x -= dx * o * wp / ws; p.y -= dy * o * wp / ws;
+            q.x += dx * o * wq / ws; q.y += dy * o * wq / ws;
+          }
+        }
+      }
+    }
+
+    _contain(env) {
+      const P = this.p, ne = {}, obs = env && env.obstacles;
+      for (const p of this.particles) {
+        this.nearestEdge(p.x, p.y, ne);
+        const inside = this.pointInside(p.x, p.y);
+        const inset = p.r + 0.8 + P.capDepth * ne.tip * ne.tip * ne.tip + (p.type === 'nucleus' ? 4 : 0);
+        if (!inside || ne.d < inset) {
+          p.x = ne.px - ne.nx * inset; p.y = ne.py - ne.ny * inset;
+          const vn = p.vx * ne.nx + p.vy * ne.ny;
+          if (vn > 0) { p.vx -= vn * ne.nx; p.vy -= vn * ne.ny; }
+        }
+        if (obs) for (const o of obs) {
+          const dx = p.x - o.x, dy = p.y - o.y, d = Math.hypot(dx, dy), m = o.r + p.r;
+          if (d < m && d > 1e-6) { p.x = o.x + dx / d * m; p.y = o.y + dy / d * m; }
+        }
+      }
+    }
+
+    /* ── Fagocitose: presa totalmente envolvida pela membrana vira vacúolo digestivo ── */
+    _engulf(env) {
+      if (!env || !env.prey) return;
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const nd of this.nodes) { if (nd.x < x0) x0 = nd.x; if (nd.x > x1) x1 = nd.x; if (nd.y < y0) y0 = nd.y; if (nd.y > y1) y1 = nd.y; }
+      const ne = {};
+      for (const q of env.prey) {
+        if (!q.alive || q.x < x0 || q.x > x1 || q.y < y0 || q.y > y1) continue;
+        if (!this.pointInside(q.x, q.y)) continue;
+        this.nearestEdge(q.x, q.y, ne);
+        if (ne.d < 5) continue;
+        q.alive = false;
+        this.counts.engulfed++;
+        this.particles.push({ type: 'food', x: q.x, y: q.y, vx: 0, vy: 0, r: 5, u: this.rng(),
+          gel: 0, phase: 0, digest: 0, digestMax: 900, spin: q.ang || 0 });
+        if (env.onEngulf) env.onEngulf(q);
+      }
+    }
+  }
+
+  Amoeba.DEFAULTS = DEFAULTS;
+  Amoeba.mulberry32 = mulberry32;
+  if (typeof module !== 'undefined' && module.exports) module.exports = Amoeba;
+  else root.Amoeba = Amoeba;
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+
+<script>
+(function () {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const cv = $('cv'), ctx = cv.getContext('2d');
+  const reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ── estado ── */
+  const SLIDERS = ['contraction', 'adhesion', 'gelation', 'flowSpeed', 'chemotaxis', 'pseudopodRate', 'podW'];
+  const inhib = { bleb: false, cyto: false };
+  const layers = { gel: true, pol: true, anc: true, flow: false, pod: false, attr: false };
+  let running = true, speed = 2, seed = 7;
+  let am, prey = [], fx = [], source = null;
+  let preyOn = true, grainOn = false;
+  const cam = { x: 0, y: 0, s: 1, base: 1 };
+  let zoom = 1;
+  let W = 0, H = 0, DPR = 1;
+
+  function val(id) { return parseFloat($(id).value); }
+  function params() {
+    return {
+      contraction: inhib.bleb ? 0 : val('contraction'),
+      adhesion: val('adhesion'),
+      gelation: inhib.cyto ? 0 : val('gelation'),
+      flowSpeed: val('flowSpeed'),
+      chemotaxis: val('chemotaxis'),
+      pseudopodRate: val('pseudopodRate'),
+      podWidth: +(10 + 20 * val('podW')).toFixed(1)
+    };
+  }
+
+  /* ── campo de grãos determinístico (infinito) ── */
+  function hash(i, j, k) { let h = (i * 374761393 + j * 668265263 + k * 2147483647 + seed * 1442695041) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; }
+  const GC = 150;
+  function grainsNear(x, y, R) {
+    const out = [];
+    const i0 = Math.floor((x - R) / GC), i1 = Math.floor((x + R) / GC), j0 = Math.floor((y - R) / GC), j1 = Math.floor((y + R) / GC);
+    for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
+      if (hash(i, j, 1) > 0.55) continue;
+      const gx = (i + 0.2 + 0.6 * hash(i, j, 2)) * GC, gy = (j + 0.2 + 0.6 * hash(i, j, 3)) * GC;
+      if (Math.hypot(gx, gy) < 150) continue;          // área livre no ponto de partida
+      out.push({ x: gx, y: gy, r: 16 + 26 * hash(i, j, 4), k: hash(i, j, 5) });
+    }
+    return out;
+  }
+  function inGrain(x, y, pad) {
+    if (!grainOn) return false;
+    for (const g of grainsNear(x, y, 60)) if (Math.hypot(x - g.x, y - g.y) < g.r + pad) return true;
+    return false;
+  }
+
+  /* ── bactérias em microcolônias ── */
+  let rnd = Amoeba.mulberry32(99);
+  function addColony(cx, cy) {
+    const n = 3 + Math.floor(rnd() * 7);
+    for (let i = 0; i < n; i++) {
+      const x = cx + (rnd() - 0.5) * 34, y = cy + (rnd() - 0.5) * 34;
+      if (inGrain(x, y, 6)) continue;
+      prey.push({ x, y, ang: rnd() * Math.PI * 2, len: 5 + rnd() * 3, alive: true, ph: rnd() * 6 });
+    }
+  }
+  function seedPrey(cx, cy) {
+    prey = [];
+    for (let i = 0; i < 14; i++) {
+      const a = rnd() * Math.PI * 2, d = 130 + rnd() * 520;
+      addColony(cx + Math.cos(a) * d, cy + Math.sin(a) * d);
+    }
+  }
+  function managePrey() {
+    if (!preyOn) return;
+    const c = am.metrics;
+    prey = prey.filter(q => q.alive && Math.hypot(q.x - c.cx, q.y - c.cy) < 1100);
+    let near = 0; for (const q of prey) if (Math.hypot(q.x - c.cx, q.y - c.cy) < 650) near++;
+    if (near < 55) {
+      const a = Math.atan2(c.vy, c.vx) + (rnd() - 0.5) * 2.6, d = 480 + rnd() * 300;
+      addColony(c.cx + Math.cos(a) * d, c.cy + Math.sin(a) * d);
+    }
+    for (const q of prey) { q.x += (rnd() - 0.5) * 0.25; q.y += (rnd() - 0.5) * 0.25; q.ang += (rnd() - 0.5) * 0.04; }
+  }
+
+  function reset() {
+    rnd = Amoeba.mulberry32(seed * 31 + 5);
+    am = new Amoeba(0, 0, Object.assign({ seed }, params()));
+    source = null; fx = [];
+    seedPrey(0, 0);
+    cam.x = 0; cam.y = 0;
+    for (let i = 0; i < 260; i++) simStep();      // abre já polarizada
+    cam.x = am.metrics.cx; cam.y = am.metrics.cy;
+    updateJSON();
+  }
+
+  /* Campo de atraente das bactérias (ex.: folato), em regime estacionário:
+     cada bactéria contribui C = e^(−d/λ). A célula responde ao gradiente RELATIVO
+     |∇C|/(C + C₀) — lei de Weber com limiar de detecção C₀ —, então uma colônia
+     distante ainda orienta, e colônias em direções opostas se cancelam (exploração).
+     A fonte do usuário funciona como uma micropipeta: sinal pontual forte que domina;
+     as bactérias apenas desviam o trajeto (e são comidas no caminho). */
+  const LAMBDA = 140, C0 = 0.02, SRC_BIAS = 0.35;
+  function gradient(x, y) {
+    let C = 0, gx = 0, gy = 0;
+    if (preyOn) for (const q of prey) {
+      if (!q.alive) continue;
+      const dx = q.x - x, dy = q.y - y, d = Math.hypot(dx, dy);
+      if (d > LAMBDA * 6 || d < 1e-3) continue;
+      const w = Math.exp(-d / LAMBDA);
+      C += w; gx += w * dx / d / LAMBDA; gy += w * dy / d / LAMBDA;
+    }
+    const m = Math.hypot(gx, gy);
+    let bs = 0, bx = 0, by = 0;
+    if (m > 1e-12) { bs = Math.min(1, m / (C + C0) * LAMBDA); bx = gx / m; by = gy / m; }
+    if (!source) return bs > 0 ? { x: bx * bs, y: by * bs } : null;
+    const dx = source.x - x, dy = source.y - y, d = Math.hypot(dx, dy);
+    if (d < 1e-3) return null;
+    // à medida que a micropipeta se esgota, as bactérias voltam a comandar a direção
+    const k = srcStrength();
+    const wb = bs * (SRC_BIAS * k + (1 - k));
+    const vx = k * dx / d + wb * bx, vy = k * dy / d + wb * by, vm = Math.hypot(vx, vy);
+    if (vm < 1e-9) return null;
+    const str = Math.max(k, bs);
+    return { x: vx / vm * str, y: vy / vm * str };
+  }
+  /* A micropipeta se esgota sozinha: sinal pleno por SRC_HOLD passos de simulação,
+     depois enfraquece até sumir em SRC_FADE passos (~25 s em 2×). */
+  const SRC_HOLD = 1800, SRC_FADE = 1200;
+  const HINT0 = $('hint').textContent;
+  function srcStrength() {
+    if (!source) return 0;
+    return source.age < SRC_HOLD ? 1 : Math.max(0, 1 - (source.age - SRC_HOLD) / SRC_FADE);
+  }
+  function ageSource() {
+    if (!source) return;
+    source.age++;
+    if (source.age >= SRC_HOLD + SRC_FADE) source = null;
+  }
+  function simStep() {
+    const c = am.metrics;
+    const env = {
+      gradient: (preyOn || source) ? gradient : null,
+      prey: preyOn ? prey : null,
+      obstacles: grainOn ? grainsNear(c.cx || 0, c.cy || 0, 260) : null,
+      onDigest: p => fx.push({ x: p.x, y: p.y, life: 1 })
+    };
+    am.step(env);
+    managePrey();
+    ageSource();
+  }
+
+  /* ── tema ── */
+  let T = {};
+  function readTheme() {
+    const cs = getComputedStyle(document.documentElement);
+    const g = n => cs.getPropertyValue(n).trim();
+    T = { field: g('--field'), ink: g('--ink'), muted: g('--muted'), tip: g('--tip'), rear: g('--rear'), sol: g('--sol'),
+          gel: g('--gel'), accent: g('--accent'), dark: g('--field-mode') === 'dark', line: g('--line') };
+    makeSprites(); makeTexture();
+    if (typeof syncTheme === 'function') syncTheme();
+  }
+  function rgba(hex, a) {
+    let h = hex.replace('#', ''); if (h.length === 3) h = h.split('').map(c => c + c).join('');
+    const n = parseInt(h, 16); return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+  }
+  let sprSol, sprGel, sprNeu, texPat, sprAttr;
+  function sprite(col, a) {
+    const s = document.createElement('canvas'); s.width = s.height = 64;
+    const g = s.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, rgba(col, a)); gr.addColorStop(1, rgba(col, 0));
+    g.fillStyle = gr; g.fillRect(0, 0, 64, 64); return s;
+  }
+  function makeSprites() {
+    sprSol = sprite(T.sol, T.dark ? 0.22 : 0.2);
+    sprGel = sprite(T.gel, T.dark ? 0.16 : 0.14);
+    sprNeu = sprite(T.dark ? '#cfd8dd' : '#5d6660', T.dark ? 0.1 : 0.09);
+    sprAttr = null;
+  }
+  function makeTexture() {
+    const s = document.createElement('canvas'); s.width = s.height = 256;
+    const g = s.getContext('2d'), r = Amoeba.mulberry32(3);
+    for (let i = 0; i < 260; i++) {
+      g.fillStyle = rgba(T.dark ? '#9fb3c4' : '#4c5a54', 0.04 + r() * 0.08);
+      g.beginPath(); g.arc(r() * 256, r() * 256, 0.4 + r() * 1.4, 0, 7); g.fill();
+    }
+    texPat = ctx.createPattern(s, 'repeat');
+  }
+  const mo = new MutationObserver(readTheme);
+  mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  if (window.matchMedia) matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', readTheme);
+
+  /* ── tamanho ── */
+  function resize() {
+    const r = cv.getBoundingClientRect();
+    DPR = Math.min(2, window.devicePixelRatio || 1);
+    W = r.width; H = r.height;
+    cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+    cam.base = Math.max(0.8, Math.min(2.1, Math.min(W, H) / 360)); cam.s = cam.base * zoom;
+  }
+  new ResizeObserver(resize).observe(cv);
+
+  /* ── desenho ── */
+  function cellPath(N) {
+    const n = N.length, a = N[n - 1], b = N[0];
+    ctx.beginPath(); ctx.moveTo((a.x + b.x) / 2, (a.y + b.y) / 2);
+    for (let i = 0; i < n; i++) { const p = N[i], q = N[(i + 1) % n]; ctx.quadraticCurveTo(p.x, p.y, (p.x + q.x) / 2, (p.y + q.y) / 2); }
+    ctx.closePath();
+  }
+  function draw() {
+    const s = cam.s;
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.fillStyle = T.field; ctx.fillRect(0, 0, W, H);
+    // transforma para o mundo (o substrato fica parado; é ele que denuncia o avanço)
+    ctx.setTransform(DPR * s, 0, 0, DPR * s, DPR * (W / 2 - cam.x * s), DPR * (H / 2 - cam.y * s));
+    const vx0 = cam.x - W / 2 / s, vy0 = cam.y - H / 2 / s, vx1 = cam.x + W / 2 / s, vy1 = cam.y + H / 2 / s;
+    ctx.fillStyle = texPat; ctx.fillRect(vx0, vy0, vx1 - vx0, vy1 - vy0);
+
+    // fonte quimiotática
+    if (source) {
+      const t = performance.now() / 1000, k = srcStrength();
+      for (let j = 0; j < 3; j++) {
+        const r = ((t * 22 + j * 30) % 90) + 6;
+        ctx.strokeStyle = rgba(T.accent, 0.35 * k * (1 - r / 96)); ctx.lineWidth = 1.2 / s;
+        ctx.beginPath(); ctx.arc(source.x, source.y, r, 0, 7); ctx.stroke();
+      }
+      ctx.fillStyle = rgba(T.accent, 0.25 + 0.75 * k); ctx.beginPath(); ctx.arc(source.x, source.y, 3, 0, 7); ctx.fill();
+    }
+
+    // grãos de solo
+    if (grainOn) for (const g of grainsNear(cam.x, cam.y, Math.max(vx1 - vx0, vy1 - vy0))) {
+      ctx.fillStyle = T.dark ? rgba('#7b6d58', 0.55) : rgba('#9a8a70', 0.5);
+      ctx.beginPath();
+      for (let i = 0; i <= 14; i++) {
+        const a = i / 14 * Math.PI * 2, rr = g.r * (0.9 + 0.12 * Math.sin(a * 3 + g.k * 9) + 0.06 * Math.sin(a * 7 + g.k * 3));
+        i ? ctx.lineTo(g.x + Math.cos(a) * rr, g.y + Math.sin(a) * rr) : ctx.moveTo(g.x + Math.cos(a) * rr, g.y + Math.sin(a) * rr);
+      }
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = T.dark ? rgba('#d9c9a8', 0.35) : rgba('#5e5140', 0.35); ctx.lineWidth = 1 / s; ctx.stroke();
+    }
+
+    // halo de atraente em volta das bactérias
+    if (preyOn && layers.attr) {
+      if (!sprAttr) sprAttr = sprite(T.dark ? '#6cc38a' : '#2f7d4a', T.dark ? 0.03 : 0.028);
+      const R = LAMBDA * 1.2;
+      for (const q of prey) {
+        if (!q.alive || q.x < vx0 - R || q.x > vx1 + R || q.y < vy0 - R || q.y > vy1 + R) continue;
+        ctx.drawImage(sprAttr, q.x - R, q.y - R, R * 2, R * 2);
+      }
+    }
+    // bactérias
+    if (preyOn) {
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = T.dark ? rgba('#c9e3a8', 0.85) : rgba('#3d5a2a', 0.8);
+      ctx.lineWidth = 2.6;
+      ctx.beginPath();
+      for (const q of prey) {
+        if (!q.alive || q.x < vx0 - 10 || q.x > vx1 + 10 || q.y < vy0 - 10 || q.y > vy1 + 10) continue;
+        const dx = Math.cos(q.ang) * q.len / 2, dy = Math.sin(q.ang) * q.len / 2;
+        ctx.moveTo(q.x - dx, q.y - dy); ctx.lineTo(q.x + dx, q.y + dy);
+      }
+      ctx.stroke();
+    }
+
+    drawCell(s);
+
+    // NH4+ liberado na digestão
+    ctx.font = `600 ${11 / Math.min(1.2, s)}px 'Chivo Mono', monospace`; ctx.textAlign = 'center';
+    for (const f of fx) {
+      ctx.fillStyle = rgba(T.accent, Math.max(0, f.life));
+      ctx.fillText('NH₄⁺', f.x, f.y - (1 - f.life) * 30);
+      f.life -= 0.012;
+    }
+    fx = fx.filter(f => f.life > 0);
+  }
+
+  function drawCell(s) {
+    const N = am.nodes, P = am.particles;
+    // halo de contraste de fase / borda luminosa de campo escuro
+    cellPath(N);
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = T.dark ? rgba('#bfe0ff', 0.10) : rgba('#ffffff', 0.55);
+    ctx.lineWidth = 10; ctx.stroke();
+    ctx.fillStyle = layers.gel ? rgba(T.gel, T.dark ? 0.16 : 0.13) : (T.dark ? rgba('#cfd8dd', 0.07) : rgba('#5d6660', 0.07));
+    ctx.fill();
+
+    ctx.save(); cellPath(N); ctx.clip();
+    // nuvens de sol (endoplasma) e gel (ectoplasma)
+    for (const p of P) {
+      if (p.type === 'cv') continue;
+      const spr = layers.gel ? (p.gel > 0.5 ? sprGel : sprSol) : sprNeu;
+      const r = p.type === 'nucleus' ? 22 : 11;
+      ctx.drawImage(spr, p.x - r, p.y - r, r * 2, r * 2);
+    }
+    // inclusões
+    const gran = T.dark ? rgba('#efe6cf', 0.8) : rgba('#3a3428', 0.72);
+    ctx.fillStyle = gran;
+    ctx.beginPath();
+    for (const p of P) if (p.type === 'granule') { ctx.moveTo(p.x + p.r * 0.7, p.y); ctx.arc(p.x, p.y, p.r * 0.7, 0, 7); }
+    ctx.fill();
+    for (const p of P) {
+      if (p.type === 'crystal') {
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.spin);
+        // cristais bipiramidais: losango pequeno e refringente
+        const q = p.r * 0.8;
+        ctx.fillStyle = T.dark ? rgba('#ffffff', 0.7) : rgba('#ffffff', 0.75);
+        ctx.strokeStyle = T.dark ? rgba('#9fb8d6', 0.5) : rgba('#2a2a22', 0.45); ctx.lineWidth = 0.5;
+        ctx.beginPath(); ctx.moveTo(-q, 0); ctx.lineTo(0, -q * 0.6); ctx.lineTo(q, 0); ctx.lineTo(0, q * 0.6); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
+      } else if (p.type === 'vacuole') {
+        ctx.strokeStyle = T.dark ? rgba('#dce9f2', 0.5) : rgba('#2f3a35', 0.4); ctx.lineWidth = 0.8;
+        ctx.fillStyle = T.dark ? rgba('#0a1018', 0.35) : rgba('#ffffff', 0.35);
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 7); ctx.fill(); ctx.stroke();
+      } else if (p.type === 'food') {
+        const left = 1 - p.digest / p.digestMax;
+        ctx.fillStyle = T.dark ? rgba('#2a1e10', 0.45) : rgba('#f6efe0', 0.6);
+        ctx.strokeStyle = rgba(T.sol, 0.8); ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 7); ctx.fill(); ctx.stroke();
+        ctx.strokeStyle = T.dark ? rgba('#c9e3a8', 0.85 * left) : rgba('#3d5a2a', 0.8 * left);
+        ctx.lineWidth = 2.2 * Math.max(0.4, left); ctx.lineCap = 'round';
+        const dx = Math.cos(p.spin) * 2.6 * left, dy = Math.sin(p.spin) * 2.6 * left;
+        ctx.beginPath(); ctx.moveTo(p.x - dx, p.y - dy); ctx.lineTo(p.x + dx, p.y + dy); ctx.stroke();
+      } else if (p.type === 'nucleus') {
+        ctx.fillStyle = T.dark ? rgba('#9db2c6', 0.32) : rgba('#6d7c86', 0.28);
+        ctx.strokeStyle = T.dark ? rgba('#d6e4f0', 0.7) : rgba('#33403a', 0.6); ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.ellipse(p.x, p.y, p.r, p.r * 0.82, Math.atan2(p.vy, p.vx), 0, 7); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = T.dark ? rgba('#e8f0f6', 0.5) : rgba('#33403a', 0.45);
+        for (let k = 0; k < 5; k++) { ctx.beginPath(); ctx.arc(p.x + Math.cos(k * 1.3 + p.spin) * p.r * 0.5, p.y + Math.sin(k * 1.3 + p.spin) * p.r * 0.45, 0.9, 0, 7); ctx.fill(); }
+      } else if (p.type === 'cv') {
+        ctx.fillStyle = T.dark ? rgba('#000000', 0.4) : rgba('#ffffff', 0.75);
+        ctx.strokeStyle = T.dark ? rgba('#e6f2ff', 0.75) : rgba('#2c3a33', 0.55); ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 7); ctx.fill(); ctx.stroke();
+      }
+    }
+    ctx.restore();
+
+    // membrana: cor pela polaridade
+    const n = N.length;
+    ctx.lineWidth = 1.6 / Math.min(1.3, s); ctx.lineCap = 'round';
+    for (let i = 0; i < n; i++) {
+      const a = N[(i - 1 + n) % n], b = N[i], c = N[(i + 1) % n];
+      let col;
+      if (layers.pol && b.tip > 0.12) col = rgba(T.tip, 0.35 + 0.65 * b.tip);
+      else if (layers.pol && b.rear > 0.15) col = rgba(T.rear, 0.3 + 0.7 * Math.min(1, b.rear * 1.3));
+      else col = rgba(T.ink, T.dark ? 0.55 : 0.6);
+      ctx.strokeStyle = col;
+      ctx.beginPath(); ctx.moveTo((a.x + b.x) / 2, (a.y + b.y) / 2); ctx.quadraticCurveTo(b.x, b.y, (b.x + c.x) / 2, (b.y + c.y) / 2); ctx.stroke();
+    }
+
+    if (layers.anc) {
+      ctx.strokeStyle = rgba(T.accent, 0.55); ctx.fillStyle = T.accent; ctx.lineWidth = 0.8;
+      for (const nd of N) if (nd.anch) {
+        ctx.beginPath(); ctx.moveTo(nd.x, nd.y); ctx.lineTo(nd.ax, nd.ay); ctx.stroke();
+        ctx.fillRect(nd.ax - 1.6, nd.ay - 1.6, 3.2, 3.2);
+      }
+    }
+    if (layers.flow) {
+      ctx.strokeStyle = rgba(T.ink, 0.6); ctx.lineWidth = 0.9;
+      ctx.beginPath();
+      for (let i = 0; i < P.length; i += 3) {
+        const p = P[i]; if (p.gel > 0.5 || p.type === 'cv') continue;
+        const L = 16, ex = p.x + p.vx * L, ey = p.y + p.vy * L;
+        if (Math.hypot(p.vx, p.vy) < 0.03) continue;
+        ctx.moveTo(p.x, p.y); ctx.lineTo(ex, ey);
+        const a = Math.atan2(p.vy, p.vx);
+        ctx.moveTo(ex, ey); ctx.lineTo(ex - Math.cos(a - 0.5) * 3, ey - Math.sin(a - 0.5) * 3);
+        ctx.moveTo(ex, ey); ctx.lineTo(ex - Math.cos(a + 0.5) * 3, ey - Math.sin(a + 0.5) * 3);
+      }
+      ctx.stroke();
+    }
+    if (layers.pod) {
+      const c = am.metrics;
+      for (const k of am.pods) {
+        // seta na ponta de cada foco: grossa = braço, média = ramo, fina = lóbulo; magenta = recolhendo
+        const nd = k.node, L = (8 + 20 * k.amp) * [1, 0.7, 0.5][k.gen];
+        const ex = nd.x + Math.cos(k.dir) * L, ey = nd.y + Math.sin(k.dir) * L;
+        const col = k.phase === 'retract' ? T.rear : T.tip;
+        ctx.strokeStyle = rgba(col, 0.9); ctx.fillStyle = col; ctx.lineWidth = [2.4, 1.6, 1][k.gen];
+        ctx.beginPath(); ctx.moveTo(nd.x, nd.y); ctx.lineTo(ex, ey); ctx.stroke();
+        const a = k.dir;
+        ctx.beginPath(); ctx.moveTo(ex + Math.cos(a) * 3, ey + Math.sin(a) * 3);
+        ctx.lineTo(ex + Math.cos(a + 2.4) * 3, ey + Math.sin(a + 2.4) * 3); ctx.lineTo(ex + Math.cos(a - 2.4) * 3, ey + Math.sin(a - 2.4) * 3); ctx.fill();
+      }
+    }
+  }
+
+  /* ── leituras ── */
+  const fmt = (v, d) => v.toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d });
+  function readouts() {
+    const m = am.metrics;
+    $('rSpeed').innerHTML = fmt(m.speed, 2) + ' <small>px/passo</small>';
+    $('rRatio').innerHTML = m.speed > 0.03 && m.endoSpeed > 0 ? fmt(m.ratio, 1) + '<small>×</small>' : '—';
+    $('rClutch').innerHTML = fmt(m.clutch * 100, 0) + '<small>%</small>';
+    $('rAnch').textContent = m.anchors;
+    $('rPods').textContent = am.pods.length;
+    $('rCv').textContent = am.counts.systoles;
+    $('rEng').textContent = am.counts.engulfed + ' · ' + am.counts.digested;
+    $('rSense').innerHTML = fmt((am.metrics.sense || 0) * 100, 0) + '<small>%</small>';
+    let st, tx;
+    if (m.speed > 0.05) { st = 'go'; tx = 'Avançando'; }
+    else if (m.tipSpeed > 0.02) { st = 'spin'; tx = 'Deforma sem sair do lugar'; }
+    else { st = 'stop'; tx = 'Parada'; }
+    $('status').dataset.s = st; $('statusTxt').textContent = tx;
+  }
+
+  /* ── controles ── */
+  function outText(id) {
+    const v = val(id);
+    if (id === 'flowSpeed') return fmt(v, 2) + '×';
+    if (id === 'podW') return fmt(20 + 40 * v, 0) + ' px';
+    return fmt(v * 100, 0) + '%';
+  }
+  function syncControls() {
+    for (const id of SLIDERS) $('o-' + id).textContent = outText(id);
+    $('c-contraction').classList.toggle('off', inhib.bleb);
+    $('c-gelation').classList.toggle('off', inhib.cyto);
+    const chips = [];
+    if (inhib.bleb) chips.push('Blebistatina');
+    if (inhib.cyto) chips.push('Citocalasina D');
+    $('chips').textContent = chips.length ? chips.join(', ') : 'nenhum';
+    if (am) am.setParams(params());
+    updateJSON();
+  }
+  function updateJSON() {
+    const p = params(); const o = { seed };
+    for (const k in p) o[k] = p[k];
+    o.inibidores = { blebistatina: inhib.bleb, citocalasinaD: inhib.cyto };
+    $('json').textContent = JSON.stringify(o, null, 2);
+  }
+  for (const id of SLIDERS) $(id).addEventListener('input', syncControls);
+
+  function bindToggle(id, fn) {
+    $(id).addEventListener('click', () => {
+      const on = $(id).getAttribute('aria-pressed') !== 'true';
+      $(id).setAttribute('aria-pressed', on ? 'true' : 'false'); fn(on);
+    });
+  }
+  bindToggle('tBleb', on => { inhib.bleb = on; syncControls(); });
+  bindToggle('tCyto', on => { inhib.cyto = on; syncControls(); });
+  bindToggle('tPrey', on => { preyOn = on; if (on) seedPrey(am.metrics.cx, am.metrics.cy); });
+  bindToggle('tGrain', on => { grainOn = on; if (on) prey = prey.filter(q => !inGrain(q.x, q.y, 6)); });
+  $('btnClearSrc').addEventListener('click', () => { source = null; });
+
+  const LMAP = { lGel: 'gel', lPol: 'pol', lAnc: 'anc', lFlow: 'flow', lPod: 'pod', lAttr: 'attr' };
+  for (const id in LMAP) $(id).addEventListener('change', e => { layers[LMAP[id]] = e.target.checked; });
+
+  for (const b of document.querySelectorAll('.seg button[data-sp]')) b.addEventListener('click', () => {
+    speed = +b.dataset.sp;
+    for (const o of document.querySelectorAll('.seg button[data-sp]')) o.setAttribute('aria-pressed', o === b ? 'true' : 'false');
+  });
+  // iluminação: campo claro (contraste de interferência) ou campo escuro, independente do tema do sistema
+  function syncTheme() {
+    const dark = T.dark;
+    const mt = document.querySelector('meta[name="theme-color"]'); if (mt) mt.content = T.field;
+    $('thLight').setAttribute('aria-pressed', dark ? 'false' : 'true');
+    $('thDark').setAttribute('aria-pressed', dark ? 'true' : 'false');
+  }
+  for (const b of document.querySelectorAll('.seg button[data-th]')) b.addEventListener('click', () => {
+    document.documentElement.setAttribute('data-theme', b.dataset.th);
+  });
+  $('btnReset').addEventListener('click', reset);
+  $('btnSeed').addEventListener('click', () => { seed = Math.max(1, Math.round(val('seed')) || 1); $('seed').value = seed; reset(); });
+  $('btnCopy').addEventListener('click', () => {
+    const txt = $('json').textContent;
+    const ok = () => { $('copyMsg').textContent = 'Copiado'; setTimeout(() => $('copyMsg').textContent = '', 1800); };
+    const fallback = () => { const r = document.createRange(); r.selectNodeContents($('json')); const s = getSelection(); s.removeAllRanges(); s.addRange(r); $('copyMsg').textContent = 'Selecionado; use Ctrl+C'; };
+    try { navigator.clipboard.writeText(txt).then(ok, fallback); } catch (e) { fallback(); }
+  });
+
+  /* ── laço ── */
+  let frame = 0;
+  function loop() {
+    requestAnimationFrame(loop);
+    if (!W) resize();
+    if (running) for (let i = 0; i < speed; i++) simStep();
+    const m = am.metrics;
+    cam.s += (cam.base * zoom - cam.s) * 0.2;
+    cam.x += (m.cx - cam.x) * 0.05; cam.y += (m.cy - cam.y) * 0.05;
+    draw();
+    frame++;
+    if (menuOpen && frame % 10 === 0) readouts();
+  }
+
+  /* ── app: menu de pausa, gestos, botão voltar, tela ligada, preferências ── */
+  const menu = $('menu'), fab = $('btnMenu');
+  let menuOpen = false;
+  let idleT, toastT, wake = null;
+  function wakeFab() { fab.classList.remove('idle'); clearTimeout(idleT); idleT = setTimeout(() => fab.classList.add('idle'), 3500); }
+  function toast(msg, ms) {
+    const h = $('hint'); if (msg) h.textContent = msg;
+    h.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => h.classList.remove('on'), ms || 3200);
+  }
+  async function requestWake() {
+    try { if ('wakeLock' in navigator && !wake && running && !document.hidden) { wake = await navigator.wakeLock.request('screen'); wake.addEventListener('release', () => { wake = null; }); } } catch (e) { wake = null; }
+  }
+  function releaseWake() { try { if (wake) wake.release(); } catch (e) {} wake = null; }
+  function openMenu() {
+    if (menuOpen) return;
+    menuOpen = true; running = false; menu.hidden = false; readouts(); releaseWake();
+    setTimeout(() => $('btnResume').focus({ preventScroll: true }), 0);
+  }
+  function closeMenu() {
+    if (!menuOpen) return;
+    menuOpen = false; menu.hidden = true; running = true; wakeFab(); requestWake();
+  }
+  fab.addEventListener('click', openMenu);
+  $('btnResume').addEventListener('click', closeMenu);
+  menu.addEventListener('click', e => { if (e.target === menu) closeMenu(); });   // toque fora da folha retoma
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' || e.key === ' ' && !menuOpen) { e.preventDefault(); menuOpen ? closeMenu() : openMenu(); }
+  });
+  // botão voltar do Android: abre/fecha o menu em vez de sair
+  try { history.pushState({ ameba: 1 }, ''); } catch (e) {}
+  window.addEventListener('popstate', () => {
+    menuOpen ? closeMenu() : openMenu();
+    try { history.pushState({ ameba: 1 }, ''); } catch (e) {}
+  });
+  // app em segundo plano: pausa (economiza bateria) e volta no menu
+  document.addEventListener('visibilitychange', () => { if (document.hidden) openMenu(); });
+
+  // gestos: toque curto = micropipeta; pinça = zoom; roda do mouse = zoom
+  const clampZ = z => Math.max(0.5, Math.min(3, z));
+  const pts = new Map(); let tap = null, pinch = null;
+  function placeSource(px, py) {
+    const r = cv.getBoundingClientRect();
+    const x = (px - r.left - W / 2) / cam.s + cam.x, y = (py - r.top - H / 2) / cam.s + cam.y;
+    source = { x, y, age: 0 };
+    toast('Micropipeta colocada. O sinal se esgota sozinho.');
+  }
+  cv.addEventListener('pointerdown', e => {
+    try { cv.setPointerCapture(e.pointerId); } catch (_) {}
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY }); wakeFab();
+    if (pts.size === 1) tap = { x: e.clientX, y: e.clientY, t: performance.now() };
+    else { tap = null; const [p, q] = [...pts.values()]; pinch = { d: Math.hypot(p.x - q.x, p.y - q.y) || 1, z: zoom }; }
+  });
+  cv.addEventListener('pointermove', e => {
+    if (!pts.has(e.pointerId)) return;
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (tap && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > 12) tap = null;
+    if (pinch && pts.size >= 2) { const [p, q] = [...pts.values()]; zoom = clampZ(pinch.z * Math.hypot(p.x - q.x, p.y - q.y) / pinch.d); }
+  });
+  const lift = e => {
+    pts.delete(e.pointerId);
+    if (pts.size < 2) pinch = null;
+    if (tap && e.type === 'pointerup' && performance.now() - tap.t < 350) placeSource(e.clientX, e.clientY);
+    tap = null;
+  };
+  cv.addEventListener('pointerup', lift); cv.addEventListener('pointercancel', lift);
+  cv.addEventListener('wheel', e => { e.preventDefault(); zoom = clampZ(zoom * Math.exp(-e.deltaY * 0.0015)); }, { passive: false });
+
+  // preferências do usuário (ficam neste aparelho)
+  const KEY = 'ameba-solgel-app-v1';
+  function saveState() {
+    try {
+      localStorage.setItem(KEY, JSON.stringify({
+        v: Object.fromEntries(SLIDERS.map(id => [id, $(id).value])), inhib, preyOn, grainOn, layers, speed, seed,
+        theme: document.documentElement.getAttribute('data-theme')
+      }));
+    } catch (e) {}
+  }
+  function loadState() {
+    try {
+      const s = JSON.parse(localStorage.getItem(KEY) || 'null'); if (!s) return;
+      for (const id in (s.v || {})) if ($(id)) $(id).value = s.v[id];
+      Object.assign(inhib, s.inhib || {});
+      $('tBleb').setAttribute('aria-pressed', inhib.bleb ? 'true' : 'false');
+      $('tCyto').setAttribute('aria-pressed', inhib.cyto ? 'true' : 'false');
+      preyOn = s.preyOn !== false; $('tPrey').setAttribute('aria-pressed', preyOn ? 'true' : 'false');
+      grainOn = !!s.grainOn; $('tGrain').setAttribute('aria-pressed', grainOn ? 'true' : 'false');
+      Object.assign(layers, s.layers || {});
+      for (const id in LMAP) $(id).checked = !!layers[LMAP[id]];
+      speed = [1, 2, 4].includes(s.speed) ? s.speed : 2;
+      for (const b of document.querySelectorAll('.seg button[data-sp]')) b.setAttribute('aria-pressed', +b.dataset.sp === speed ? 'true' : 'false');
+      seed = Math.max(1, s.seed | 0) || 7; $('seed').value = seed;
+      if (s.theme === 'light' || s.theme === 'dark') document.documentElement.setAttribute('data-theme', s.theme);
+    } catch (e) {}
+  }
+  menu.addEventListener('input', saveState);
+  menu.addEventListener('change', saveState);
+  menu.addEventListener('click', () => setTimeout(saveState, 0));
+  loadState();
+  wakeFab(); toast(null, 5200); requestWake();
+
+  readTheme();
+  resize();
+  syncControls();
+  reset();
+  readouts();
+  loop();
+})();
+</script>
+
+<script>
+if ('serviceWorker' in navigator && location.protocol === 'https:' && !window.Capacitor) {
+  addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+}
+</script>
+
+</html>

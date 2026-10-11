@@ -1,0 +1,91 @@
+name: Compilar APK e publicar versão web
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    name: APK Android
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Montar o app (www/index.html)
+        run: python3 src/mobile-build.py
+
+      - name: Copiar o app para o projeto Android
+        run: npx cap sync android
+
+      - name: Compilar o APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Nomear o APK
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk ameba-sol-gel.apk
+
+      - name: Guardar o APK nesta execução
+        uses: actions/upload-artifact@v4
+        with:
+          name: ameba-sol-gel-apk
+          path: ameba-sol-gel.apk
+
+      - name: Publicar o APK em Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: Ameba Sol-Gel 1.0.${{ github.run_number }}
+          make_latest: true
+          files: ameba-sol-gel.apk
+          body: |
+            APK para Android. Baixe `ameba-sol-gel.apk` no celular e abra o arquivo para instalar
+            (o Android pede para permitir a instalação de apps desta fonte).
+            Versões novas instalam por cima da anterior, sem desinstalar.
+
+  web:
+    name: Versão web (GitHub Pages)
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Montar o app (www/index.html)
+        run: python3 src/mobile-build.py
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: www
+
+      - id: deploy
+        uses: actions/deploy-pages@v4

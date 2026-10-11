@@ -1,0 +1,757 @@
+<title>Ameba Sol-Gel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo:wght@400;500;700&family=Chivo+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: bancada de microscópio — campo de visão à esquerda, painel de controle à direita;
+   no celular o campo fica em cima e o painel rola embaixo. Tema claro = campo claro, escuro = campo escuro. */
+:root {
+  --bg: #e4e9e6;
+  --field: #dde4e0;
+  --panel: #f1f4f1;
+  --ink: #1b2420;
+  --muted: #5a6862;
+  --line: #c6d0cb;
+  --accent: #2c5a96;
+  --accent-ink: #ffffff;
+  --tip: #12807d;
+  --rear: #a93072;
+  --sol: #b97a1f;
+  --gel: #4f75a0;
+  --good: #2f7d4a;
+  --warn: #a5671a;
+  --font-ui: 'Chivo', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-data: 'Chivo Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  --field-mode: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0b1016; --field: #05080c; --panel: #111820; --ink: #dce6ec; --muted: #8796a2;
+    --line: #233140; --accent: #86aee8; --accent-ink: #0a1220; --tip: #5ccfc6; --rear: #e27ab6;
+    --sol: #e8b25e; --gel: #8eb1dc; --good: #6cc38a; --warn: #e2a855; --field-mode: dark; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0b1016; --field: #05080c; --panel: #111820; --ink: #dce6ec; --muted: #8796a2;
+  --line: #233140; --accent: #86aee8; --accent-ink: #0a1220; --tip: #5ccfc6; --rear: #e27ab6;
+  --sol: #e8b25e; --gel: #8eb1dc; --good: #6cc38a; --warn: #e2a855; --field-mode: dark; color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-ui); font-size: 14px; line-height: 1.45; }
+button, input, select { font: inherit; color: inherit; }
+
+.app { display: flex; flex-direction: column; min-height: 100%; }
+.bar {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 20px;
+  padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--panel);
+}
+.brand { min-width: 0; }
+.brand h1 { margin: 0; font-size: 1.15rem; font-weight: 700; letter-spacing: 0.01em; text-wrap: balance; }
+.brand p { margin: 2px 0 0; color: var(--muted); font-size: 0.82rem; }
+.transport { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+.btn {
+  border: 1px solid var(--line); background: var(--bg); border-radius: 6px; padding: 6px 12px; cursor: pointer;
+  font-weight: 500; line-height: 1.2;
+}
+.btn:hover { border-color: var(--muted); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.btn:focus-visible, input:focus-visible, .seg button:focus-visible, .toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.seg button { border: 0; background: var(--bg); padding: 6px 10px; cursor: pointer; font-family: var(--font-data); font-size: 0.82rem; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+
+.stage { display: grid; grid-template-columns: minmax(0, 1fr) 340px; flex: 1; min-height: 0; }
+.field-wrap { position: relative; min-width: 0; min-height: 360px; background: var(--field); overflow: hidden; }
+#cv { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: crosshair; }
+.hint {
+  position: absolute; left: 12px; bottom: 12px; max-width: calc(100% - 24px);
+  font-size: 0.78rem; color: var(--muted); background: color-mix(in srgb, var(--panel) 82%, transparent);
+  border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; pointer-events: none;
+}
+.status {
+  position: absolute; left: 12px; top: 12px; display: inline-flex; align-items: center; gap: 7px;
+  font-size: 0.8rem; font-weight: 500; padding: 5px 10px; border-radius: 999px;
+  background: color-mix(in srgb, var(--panel) 88%, transparent); border: 1px solid var(--line);
+}
+.status i { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); display: block; }
+.status[data-s="go"] i { background: var(--good); }
+.status[data-s="spin"] i { background: var(--warn); }
+.inhib-chips { position: absolute; right: 12px; top: 12px; display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+.chip { font-size: 0.75rem; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--rear); color: var(--rear); background: color-mix(in srgb, var(--panel) 88%, transparent); }
+
+.panel { border-left: 1px solid var(--line); background: var(--panel); overflow-y: auto; min-width: 0; }
+.sec { padding: 14px 16px 16px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 12px; }
+.sec h2 { margin: 0; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.09em; color: var(--muted); }
+
+.readouts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
+.ro { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.ro span { font-size: 0.74rem; color: var(--muted); }
+.ro b { font-family: var(--font-data); font-weight: 500; font-size: 1.02rem; font-variant-numeric: tabular-nums; }
+.ro b small { font-size: 0.72rem; color: var(--muted); font-weight: 400; }
+
+.ctl { display: flex; flex-direction: column; gap: 3px; }
+.ctl .row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.ctl label { font-weight: 500; font-size: 0.88rem; }
+.ctl output { font-family: var(--font-data); font-size: 0.82rem; font-variant-numeric: tabular-nums; color: var(--muted); }
+.ctl p { margin: 0; font-size: 0.76rem; color: var(--muted); line-height: 1.4; }
+.ctl.off label, .ctl.off output { text-decoration: line-through; text-decoration-color: var(--rear); }
+input[type="range"] { width: 100%; accent-color: var(--accent); margin: 4px 0 0; }
+
+.toggles { display: flex; flex-direction: column; gap: 8px; }
+.toggle {
+  display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; align-items: start; text-align: left;
+  border: 1px solid var(--line); background: var(--bg); border-radius: 8px; padding: 9px 11px; cursor: pointer;
+}
+.toggle .box { grid-row: span 2; width: 16px; height: 16px; border-radius: 4px; border: 1.5px solid var(--muted); margin-top: 2px; }
+.toggle strong { font-weight: 500; font-size: 0.88rem; }
+.toggle small { color: var(--muted); font-size: 0.76rem; line-height: 1.35; }
+.toggle[aria-pressed="true"] { border-color: var(--rear); }
+.toggle[aria-pressed="true"] .box { background: var(--rear); border-color: var(--rear); }
+.toggle.env[aria-pressed="true"] { border-color: var(--accent); }
+.toggle.env[aria-pressed="true"] .box { background: var(--accent); border-color: var(--accent); }
+
+.layers { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
+.layer { display: flex; gap: 8px; align-items: center; font-size: 0.85rem; cursor: pointer; }
+.layer input { accent-color: var(--accent); margin: 0; }
+.sw { width: 18px; height: 10px; border-radius: 3px; flex: none; }
+.sw.tip { background: linear-gradient(90deg, var(--tip), var(--rear)); }
+.sw.gel { background: linear-gradient(90deg, var(--gel), var(--sol)); }
+.sw.flow { background: repeating-linear-gradient(90deg, var(--ink) 0 4px, transparent 4px 7px); height: 3px; }
+.sw.anc { background: var(--accent); width: 8px; height: 8px; border-radius: 1px; }
+.sw.pod { border-top: 2px solid var(--tip); height: 0; }
+.sw.attr { background: radial-gradient(circle, var(--good) 0 30%, transparent 75%); width: 14px; height: 14px; }
+
+.params { display: flex; flex-direction: column; gap: 8px; }
+.params .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.params label { font-size: 0.82rem; color: var(--muted); }
+.params input[type="number"] { width: 90px; border: 1px solid var(--line); background: var(--bg); border-radius: 6px; padding: 5px 8px; font-family: var(--font-data); }
+pre#json {
+  margin: 0; font-family: var(--font-data); font-size: 0.72rem; line-height: 1.5; background: var(--bg);
+  border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; overflow-x: auto; white-space: pre; user-select: all;
+}
+.note { font-size: 0.76rem; color: var(--muted); margin: 0; }
+
+@media (min-width: 821px) {
+  html, body { height: 100%; }
+  body { overflow: hidden; }
+  .app { height: 100%; }
+}
+@media (max-width: 820px) {
+  .stage { display: flex; flex-direction: column; }
+  .field-wrap { height: 58vh; min-height: 320px; }
+  .panel { border-left: 0; overflow: visible; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="app">
+  <header class="bar">
+    <div class="brand">
+      <h1>Ameba Sol-Gel</h1>
+      <p>Movimento ameboide pelo modelo sol-gel · protótipo de ajuste do núcleo de simulação</p>
+    </div>
+    <div class="transport">
+      <button class="btn primary" id="btnPlay" type="button">Pausar</button>
+      <div class="seg" role="group" aria-label="Velocidade da simulação">
+        <button type="button" id="sp1" data-sp="1" aria-pressed="false">1×</button>
+        <button type="button" id="sp2" data-sp="2" aria-pressed="true">2×</button>
+        <button type="button" id="sp4" data-sp="4" aria-pressed="false">4×</button>
+      </div>
+      <button class="btn" id="btnReset" type="button">Reiniciar</button>
+      <div class="seg" role="group" aria-label="Iluminação do campo">
+        <button type="button" id="thLight" data-th="light" aria-pressed="false">Campo claro</button>
+        <button type="button" id="thDark" data-th="dark" aria-pressed="false">Campo escuro</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="stage">
+    <div class="field-wrap">
+      <canvas id="cv" aria-label="Campo de visão com a ameba"></canvas>
+      <div class="status" id="status" data-s="go"><i></i><span id="statusTxt">Avançando</span></div>
+      <div class="inhib-chips" id="chips"></div>
+      <div class="hint" id="hint">As bactérias liberam um atraente que se difunde no meio; cada pseudópode lê o gradiente na própria ponta. Toque no campo para colocar uma micropipeta: um sinal mais forte, que a ameba prioriza.</div>
+    </div>
+
+    <aside class="panel" aria-label="Controles">
+      <section class="sec">
+        <h2>Leituras</h2>
+        <div class="readouts">
+          <div class="ro"><span>Avanço da célula</span><b id="rSpeed">0</b></div>
+          <div class="ro"><span>Fluxo do endoplasma ÷ avanço</span><b id="rRatio">—</b></div>
+          <div class="ro"><span>Tração transmitida</span><b id="rClutch">0</b></div>
+          <div class="ro"><span>Adesões ativas</span><b id="rAnch">0</b></div>
+          <div class="ro"><span>Pseudópodes</span><b id="rPods">1</b></div>
+          <div class="ro"><span>Sístoles do vacúolo contrátil</span><b id="rCv">0</b></div>
+          <div class="ro"><span>Fagocitadas · digeridas</span><b id="rEng">0</b></div>
+          <div class="ro"><span>Sinal quimiotático percebido</span><b id="rSense">0</b></div>
+        </div>
+      </section>
+
+      <section class="sec">
+        <h2>Motor celular</h2>
+        <div class="ctl" id="c-contraction"><div class="row"><label for="contraction">Contração posterior (miosina II)</label><output id="o-contraction"></output></div>
+          <input type="range" id="contraction" min="0" max="1" step="0.01" value="0.6">
+          <p>Encurta o córtex no uroide e gera a pressão que empurra o endoplasma para a ponta.</p></div>
+        <div class="ctl" id="c-adhesion"><div class="row"><label for="adhesion">Adesão ao substrato</label><output id="o-adhesion"></output></div>
+          <input type="range" id="adhesion" min="0" max="1" step="0.01" value="0.6">
+          <p>Fração da força ativa transmitida ao substrato. Em zero, a célula deforma mas não sai do lugar.</p></div>
+        <div class="ctl" id="c-gelation"><div class="row"><label for="gelation">Gelificação (rede de actina)</label><output id="o-gelation"></output></div>
+          <input type="range" id="gelation" min="0" max="1" step="0.01" value="0.5">
+          <p>Velocidade com que o sol vira gel junto à membrana. Forma o tubo ectoplasmático, que sustenta as adesões.</p></div>
+        <div class="ctl" id="c-flowSpeed"><div class="row"><label for="flowSpeed">Escala do fluxo do endoplasma</label><output id="o-flowSpeed"></output></div>
+          <input type="range" id="flowSpeed" min="0.3" max="2" step="0.05" value="1">
+          <p>Só altera o escoamento interno; a translocação depende da membrana e das adesões.</p></div>
+      </section>
+
+      <section class="sec">
+        <h2>Polaridade</h2>
+        <div class="ctl" id="c-chemotaxis"><div class="row"><label for="chemotaxis">Quimiotaxia</label><output id="o-chemotaxis"></output></div>
+          <input type="range" id="chemotaxis" min="0" max="1" step="0.01" value="0.6">
+          <p>Peso do gradiente (fonte ou presa) na escolha e no crescimento dos pseudópodes.</p></div>
+        <div class="ctl" id="c-pseudopodRate"><div class="row"><label for="pseudopodRate">Ramificação e tateio</label><output id="o-pseudopodRate"></output></div>
+          <input type="range" id="pseudopodRate" min="0" max="1" step="0.01" value="0.5">
+          <p>Frequência de ramos, bifurcações de ponta e lóbulos. Alto: a ameba tateia o ambiente com muitos braços.</p></div>
+        <div class="ctl" id="c-podW"><div class="row"><label for="podW">Largura dos braços</label><output id="o-podW"></output></div>
+          <input type="range" id="podW" min="0" max="1" step="0.01" value="0.5">
+          <p>Largura do braço principal. Ramos e lóbulos são proporcionalmente mais finos.</p></div>
+      </section>
+
+      <section class="sec">
+        <h2>Inibidores</h2>
+        <div class="toggles">
+          <button type="button" class="toggle" id="tBleb" aria-pressed="false"><span class="box"></span><strong>Blebistatina</strong><small>Inibe a miosina II. A contração posterior para; resta só a protrusão por polimerização.</small></button>
+          <button type="button" class="toggle" id="tCyto" aria-pressed="false"><span class="box"></span><strong>Citocalasina D</strong><small>Impede a polimerização de actina. O gel se desfaz e as adesões se perdem.</small></button>
+        </div>
+      </section>
+
+      <section class="sec">
+        <h2>Ambiente</h2>
+        <div class="toggles">
+          <button type="button" class="toggle env" id="tPrey" aria-pressed="true"><span class="box"></span><strong>Bactérias</strong><small>Presas em microcolônias. Engolidas viram vacúolos digestivos.</small></button>
+          <button type="button" class="toggle env" id="tGrain" aria-pressed="false"><span class="box"></span><strong>Grãos de solo</strong><small>Obstáculos minerais; a ameba contorna e se espreme entre eles.</small></button>
+        </div>
+        <button class="btn" id="btnClearSrc" type="button">Remover fonte quimiotática</button>
+      </section>
+
+      <section class="sec">
+        <h2>Camadas</h2>
+        <div class="layers">
+          <label class="layer"><input type="checkbox" id="lGel" checked><span class="sw gel"></span>Gel e sol</label>
+          <label class="layer"><input type="checkbox" id="lPol" checked><span class="sw tip"></span>Ponta e uroide</label>
+          <label class="layer"><input type="checkbox" id="lAnc" checked><span class="sw anc"></span>Adesões</label>
+          <label class="layer"><input type="checkbox" id="lFlow"><span class="sw flow"></span>Fluxo</label>
+          <label class="layer"><input type="checkbox" id="lPod"><span class="sw pod"></span>Pseudópodes</label>
+          <label class="layer"><input type="checkbox" id="lAttr"><span class="sw attr"></span>Atraente</label>
+        </div>
+      </section>
+
+      <section class="sec">
+        <h2>Parâmetros</h2>
+        <div class="params">
+          <div class="row"><label for="seed">Semente</label><input type="number" id="seed" value="7" min="1" step="1"><button class="btn" id="btnSeed" type="button">Aplicar</button></div>
+          <pre id="json"></pre>
+          <div class="row"><button class="btn" id="btnCopy" type="button">Copiar parâmetros</button><span class="note" id="copyMsg"></span></div>
+          <p class="note">Mesma semente e mesmos parâmetros reproduzem o mesmo movimento. Esse JSON é o que a ferramenta de animação vai ler.</p>
+        </div>
+      </section>
+    </aside>
+  </main>
+</div>
+
+<script>
+/*__CORE__*/
+</script>
+<script>
+(function () {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const cv = $('cv'), ctx = cv.getContext('2d');
+  const reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ── estado ── */
+  const SLIDERS = ['contraction', 'adhesion', 'gelation', 'flowSpeed', 'chemotaxis', 'pseudopodRate', 'podW'];
+  const inhib = { bleb: false, cyto: false };
+  const layers = { gel: true, pol: true, anc: true, flow: false, pod: false, attr: false };
+  let running = !reduce, speed = 2, seed = 7;
+  let am, prey = [], fx = [], source = null;
+  let preyOn = true, grainOn = false;
+  const cam = { x: 0, y: 0, s: 1 };
+  let W = 0, H = 0, DPR = 1;
+
+  function val(id) { return parseFloat($(id).value); }
+  function params() {
+    return {
+      contraction: inhib.bleb ? 0 : val('contraction'),
+      adhesion: val('adhesion'),
+      gelation: inhib.cyto ? 0 : val('gelation'),
+      flowSpeed: val('flowSpeed'),
+      chemotaxis: val('chemotaxis'),
+      pseudopodRate: val('pseudopodRate'),
+      podWidth: +(10 + 20 * val('podW')).toFixed(1)
+    };
+  }
+
+  /* ── campo de grãos determinístico (infinito) ── */
+  function hash(i, j, k) { let h = (i * 374761393 + j * 668265263 + k * 2147483647 + seed * 1442695041) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; }
+  const GC = 150;
+  function grainsNear(x, y, R) {
+    const out = [];
+    const i0 = Math.floor((x - R) / GC), i1 = Math.floor((x + R) / GC), j0 = Math.floor((y - R) / GC), j1 = Math.floor((y + R) / GC);
+    for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
+      if (hash(i, j, 1) > 0.55) continue;
+      const gx = (i + 0.2 + 0.6 * hash(i, j, 2)) * GC, gy = (j + 0.2 + 0.6 * hash(i, j, 3)) * GC;
+      if (Math.hypot(gx, gy) < 150) continue;          // área livre no ponto de partida
+      out.push({ x: gx, y: gy, r: 16 + 26 * hash(i, j, 4), k: hash(i, j, 5) });
+    }
+    return out;
+  }
+  function inGrain(x, y, pad) {
+    if (!grainOn) return false;
+    for (const g of grainsNear(x, y, 60)) if (Math.hypot(x - g.x, y - g.y) < g.r + pad) return true;
+    return false;
+  }
+
+  /* ── bactérias em microcolônias ── */
+  let rnd = Amoeba.mulberry32(99);
+  function addColony(cx, cy) {
+    const n = 3 + Math.floor(rnd() * 7);
+    for (let i = 0; i < n; i++) {
+      const x = cx + (rnd() - 0.5) * 34, y = cy + (rnd() - 0.5) * 34;
+      if (inGrain(x, y, 6)) continue;
+      prey.push({ x, y, ang: rnd() * Math.PI * 2, len: 5 + rnd() * 3, alive: true, ph: rnd() * 6 });
+    }
+  }
+  function seedPrey(cx, cy) {
+    prey = [];
+    for (let i = 0; i < 14; i++) {
+      const a = rnd() * Math.PI * 2, d = 130 + rnd() * 520;
+      addColony(cx + Math.cos(a) * d, cy + Math.sin(a) * d);
+    }
+  }
+  function managePrey() {
+    if (!preyOn) return;
+    const c = am.metrics;
+    prey = prey.filter(q => q.alive && Math.hypot(q.x - c.cx, q.y - c.cy) < 1100);
+    let near = 0; for (const q of prey) if (Math.hypot(q.x - c.cx, q.y - c.cy) < 650) near++;
+    if (near < 55) {
+      const a = Math.atan2(c.vy, c.vx) + (rnd() - 0.5) * 2.6, d = 480 + rnd() * 300;
+      addColony(c.cx + Math.cos(a) * d, c.cy + Math.sin(a) * d);
+    }
+    for (const q of prey) { q.x += (rnd() - 0.5) * 0.25; q.y += (rnd() - 0.5) * 0.25; q.ang += (rnd() - 0.5) * 0.04; }
+  }
+
+  function reset() {
+    rnd = Amoeba.mulberry32(seed * 31 + 5);
+    am = new Amoeba(0, 0, Object.assign({ seed }, params()));
+    source = null; fx = [];
+    seedPrey(0, 0);
+    cam.x = 0; cam.y = 0;
+    for (let i = 0; i < 260; i++) simStep();      // abre já polarizada
+    cam.x = am.metrics.cx; cam.y = am.metrics.cy;
+    updateJSON();
+  }
+
+  /* Campo de atraente das bactérias (ex.: folato), em regime estacionário:
+     cada bactéria contribui C = e^(−d/λ). A célula responde ao gradiente RELATIVO
+     |∇C|/(C + C₀) — lei de Weber com limiar de detecção C₀ —, então uma colônia
+     distante ainda orienta, e colônias em direções opostas se cancelam (exploração).
+     A fonte do usuário funciona como uma micropipeta: sinal pontual forte que domina;
+     as bactérias apenas desviam o trajeto (e são comidas no caminho). */
+  const LAMBDA = 140, C0 = 0.02, SRC_BIAS = 0.35;
+  function gradient(x, y) {
+    let C = 0, gx = 0, gy = 0;
+    if (preyOn) for (const q of prey) {
+      if (!q.alive) continue;
+      const dx = q.x - x, dy = q.y - y, d = Math.hypot(dx, dy);
+      if (d > LAMBDA * 6 || d < 1e-3) continue;
+      const w = Math.exp(-d / LAMBDA);
+      C += w; gx += w * dx / d / LAMBDA; gy += w * dy / d / LAMBDA;
+    }
+    const m = Math.hypot(gx, gy);
+    let bs = 0, bx = 0, by = 0;
+    if (m > 1e-12) { bs = Math.min(1, m / (C + C0) * LAMBDA); bx = gx / m; by = gy / m; }
+    if (!source) return bs > 0 ? { x: bx * bs, y: by * bs } : null;
+    const dx = source.x - x, dy = source.y - y, d = Math.hypot(dx, dy);
+    if (d < 1e-3) return null;
+    // à medida que a micropipeta se esgota, as bactérias voltam a comandar a direção
+    const k = srcStrength();
+    const wb = bs * (SRC_BIAS * k + (1 - k));
+    const vx = k * dx / d + wb * bx, vy = k * dy / d + wb * by, vm = Math.hypot(vx, vy);
+    if (vm < 1e-9) return null;
+    const str = Math.max(k, bs);
+    return { x: vx / vm * str, y: vy / vm * str };
+  }
+  /* A micropipeta se esgota sozinha: sinal pleno por SRC_HOLD passos de simulação,
+     depois enfraquece até sumir em SRC_FADE passos (~25 s em 2×). */
+  const SRC_HOLD = 1800, SRC_FADE = 1200;
+  const HINT0 = $('hint').textContent;
+  function srcStrength() {
+    if (!source) return 0;
+    return source.age < SRC_HOLD ? 1 : Math.max(0, 1 - (source.age - SRC_HOLD) / SRC_FADE);
+  }
+  function ageSource() {
+    if (!source) return;
+    source.age++;
+    if (source.age >= SRC_HOLD + SRC_FADE) { source = null; $('hint').textContent = HINT0; }
+  }
+  function simStep() {
+    const c = am.metrics;
+    const env = {
+      gradient: (preyOn || source) ? gradient : null,
+      prey: preyOn ? prey : null,
+      obstacles: grainOn ? grainsNear(c.cx || 0, c.cy || 0, 260) : null,
+      onDigest: p => fx.push({ x: p.x, y: p.y, life: 1 })
+    };
+    am.step(env);
+    managePrey();
+    ageSource();
+  }
+
+  /* ── tema ── */
+  let T = {};
+  function readTheme() {
+    const cs = getComputedStyle(document.documentElement);
+    const g = n => cs.getPropertyValue(n).trim();
+    T = { field: g('--field'), ink: g('--ink'), muted: g('--muted'), tip: g('--tip'), rear: g('--rear'), sol: g('--sol'),
+          gel: g('--gel'), accent: g('--accent'), dark: g('--field-mode') === 'dark', line: g('--line') };
+    makeSprites(); makeTexture();
+    if (typeof syncTheme === 'function') syncTheme();
+  }
+  function rgba(hex, a) {
+    let h = hex.replace('#', ''); if (h.length === 3) h = h.split('').map(c => c + c).join('');
+    const n = parseInt(h, 16); return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+  }
+  let sprSol, sprGel, sprNeu, texPat, sprAttr;
+  function sprite(col, a) {
+    const s = document.createElement('canvas'); s.width = s.height = 64;
+    const g = s.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, rgba(col, a)); gr.addColorStop(1, rgba(col, 0));
+    g.fillStyle = gr; g.fillRect(0, 0, 64, 64); return s;
+  }
+  function makeSprites() {
+    sprSol = sprite(T.sol, T.dark ? 0.22 : 0.2);
+    sprGel = sprite(T.gel, T.dark ? 0.16 : 0.14);
+    sprNeu = sprite(T.dark ? '#cfd8dd' : '#5d6660', T.dark ? 0.1 : 0.09);
+    sprAttr = null;
+  }
+  function makeTexture() {
+    const s = document.createElement('canvas'); s.width = s.height = 256;
+    const g = s.getContext('2d'), r = Amoeba.mulberry32(3);
+    for (let i = 0; i < 260; i++) {
+      g.fillStyle = rgba(T.dark ? '#9fb3c4' : '#4c5a54', 0.04 + r() * 0.08);
+      g.beginPath(); g.arc(r() * 256, r() * 256, 0.4 + r() * 1.4, 0, 7); g.fill();
+    }
+    texPat = ctx.createPattern(s, 'repeat');
+  }
+  const mo = new MutationObserver(readTheme);
+  mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  if (window.matchMedia) matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', readTheme);
+
+  /* ── tamanho ── */
+  function resize() {
+    const r = cv.getBoundingClientRect();
+    DPR = Math.min(2, window.devicePixelRatio || 1);
+    W = r.width; H = r.height;
+    cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+    cam.s = Math.max(0.8, Math.min(2.1, Math.min(W, H) / 360));
+  }
+  new ResizeObserver(resize).observe(cv);
+
+  /* ── desenho ── */
+  function cellPath(N) {
+    const n = N.length, a = N[n - 1], b = N[0];
+    ctx.beginPath(); ctx.moveTo((a.x + b.x) / 2, (a.y + b.y) / 2);
+    for (let i = 0; i < n; i++) { const p = N[i], q = N[(i + 1) % n]; ctx.quadraticCurveTo(p.x, p.y, (p.x + q.x) / 2, (p.y + q.y) / 2); }
+    ctx.closePath();
+  }
+  function draw() {
+    const s = cam.s;
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.fillStyle = T.field; ctx.fillRect(0, 0, W, H);
+    // transforma para o mundo (o substrato fica parado; é ele que denuncia o avanço)
+    ctx.setTransform(DPR * s, 0, 0, DPR * s, DPR * (W / 2 - cam.x * s), DPR * (H / 2 - cam.y * s));
+    const vx0 = cam.x - W / 2 / s, vy0 = cam.y - H / 2 / s, vx1 = cam.x + W / 2 / s, vy1 = cam.y + H / 2 / s;
+    ctx.fillStyle = texPat; ctx.fillRect(vx0, vy0, vx1 - vx0, vy1 - vy0);
+
+    // fonte quimiotática
+    if (source) {
+      const t = performance.now() / 1000, k = srcStrength();
+      for (let j = 0; j < 3; j++) {
+        const r = ((t * 22 + j * 30) % 90) + 6;
+        ctx.strokeStyle = rgba(T.accent, 0.35 * k * (1 - r / 96)); ctx.lineWidth = 1.2 / s;
+        ctx.beginPath(); ctx.arc(source.x, source.y, r, 0, 7); ctx.stroke();
+      }
+      ctx.fillStyle = rgba(T.accent, 0.25 + 0.75 * k); ctx.beginPath(); ctx.arc(source.x, source.y, 3, 0, 7); ctx.fill();
+    }
+
+    // grãos de solo
+    if (grainOn) for (const g of grainsNear(cam.x, cam.y, Math.max(vx1 - vx0, vy1 - vy0))) {
+      ctx.fillStyle = T.dark ? rgba('#7b6d58', 0.55) : rgba('#9a8a70', 0.5);
+      ctx.beginPath();
+      for (let i = 0; i <= 14; i++) {
+        const a = i / 14 * Math.PI * 2, rr = g.r * (0.9 + 0.12 * Math.sin(a * 3 + g.k * 9) + 0.06 * Math.sin(a * 7 + g.k * 3));
+        i ? ctx.lineTo(g.x + Math.cos(a) * rr, g.y + Math.sin(a) * rr) : ctx.moveTo(g.x + Math.cos(a) * rr, g.y + Math.sin(a) * rr);
+      }
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = T.dark ? rgba('#d9c9a8', 0.35) : rgba('#5e5140', 0.35); ctx.lineWidth = 1 / s; ctx.stroke();
+    }
+
+    // halo de atraente em volta das bactérias
+    if (preyOn && layers.attr) {
+      if (!sprAttr) sprAttr = sprite(T.dark ? '#6cc38a' : '#2f7d4a', T.dark ? 0.03 : 0.028);
+      const R = LAMBDA * 1.2;
+      for (const q of prey) {
+        if (!q.alive || q.x < vx0 - R || q.x > vx1 + R || q.y < vy0 - R || q.y > vy1 + R) continue;
+        ctx.drawImage(sprAttr, q.x - R, q.y - R, R * 2, R * 2);
+      }
+    }
+    // bactérias
+    if (preyOn) {
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = T.dark ? rgba('#c9e3a8', 0.85) : rgba('#3d5a2a', 0.8);
+      ctx.lineWidth = 2.6;
+      ctx.beginPath();
+      for (const q of prey) {
+        if (!q.alive || q.x < vx0 - 10 || q.x > vx1 + 10 || q.y < vy0 - 10 || q.y > vy1 + 10) continue;
+        const dx = Math.cos(q.ang) * q.len / 2, dy = Math.sin(q.ang) * q.len / 2;
+        ctx.moveTo(q.x - dx, q.y - dy); ctx.lineTo(q.x + dx, q.y + dy);
+      }
+      ctx.stroke();
+    }
+
+    drawCell(s);
+
+    // NH4+ liberado na digestão
+    ctx.font = `600 ${11 / Math.min(1.2, s)}px 'Chivo Mono', monospace`; ctx.textAlign = 'center';
+    for (const f of fx) {
+      ctx.fillStyle = rgba(T.accent, Math.max(0, f.life));
+      ctx.fillText('NH₄⁺', f.x, f.y - (1 - f.life) * 30);
+      f.life -= 0.012;
+    }
+    fx = fx.filter(f => f.life > 0);
+  }
+
+  function drawCell(s) {
+    const N = am.nodes, P = am.particles;
+    // halo de contraste de fase / borda luminosa de campo escuro
+    cellPath(N);
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = T.dark ? rgba('#bfe0ff', 0.10) : rgba('#ffffff', 0.55);
+    ctx.lineWidth = 10; ctx.stroke();
+    ctx.fillStyle = layers.gel ? rgba(T.gel, T.dark ? 0.16 : 0.13) : (T.dark ? rgba('#cfd8dd', 0.07) : rgba('#5d6660', 0.07));
+    ctx.fill();
+
+    ctx.save(); cellPath(N); ctx.clip();
+    // nuvens de sol (endoplasma) e gel (ectoplasma)
+    for (const p of P) {
+      if (p.type === 'cv') continue;
+      const spr = layers.gel ? (p.gel > 0.5 ? sprGel : sprSol) : sprNeu;
+      const r = p.type === 'nucleus' ? 22 : 11;
+      ctx.drawImage(spr, p.x - r, p.y - r, r * 2, r * 2);
+    }
+    // inclusões
+    const gran = T.dark ? rgba('#efe6cf', 0.8) : rgba('#3a3428', 0.72);
+    ctx.fillStyle = gran;
+    ctx.beginPath();
+    for (const p of P) if (p.type === 'granule') { ctx.moveTo(p.x + p.r * 0.7, p.y); ctx.arc(p.x, p.y, p.r * 0.7, 0, 7); }
+    ctx.fill();
+    for (const p of P) {
+      if (p.type === 'crystal') {
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.spin);
+        // cristais bipiramidais: losango pequeno e refringente
+        const q = p.r * 0.8;
+        ctx.fillStyle = T.dark ? rgba('#ffffff', 0.7) : rgba('#ffffff', 0.75);
+        ctx.strokeStyle = T.dark ? rgba('#9fb8d6', 0.5) : rgba('#2a2a22', 0.45); ctx.lineWidth = 0.5;
+        ctx.beginPath(); ctx.moveTo(-q, 0); ctx.lineTo(0, -q * 0.6); ctx.lineTo(q, 0); ctx.lineTo(0, q * 0.6); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
+      } else if (p.type === 'vacuole') {
+        ctx.strokeStyle = T.dark ? rgba('#dce9f2', 0.5) : rgba('#2f3a35', 0.4); ctx.lineWidth = 0.8;
+        ctx.fillStyle = T.dark ? rgba('#0a1018', 0.35) : rgba('#ffffff', 0.35);
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 7); ctx.fill(); ctx.stroke();
+      } else if (p.type === 'food') {
+        const left = 1 - p.digest / p.digestMax;
+        ctx.fillStyle = T.dark ? rgba('#2a1e10', 0.45) : rgba('#f6efe0', 0.6);
+        ctx.strokeStyle = rgba(T.sol, 0.8); ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 7); ctx.fill(); ctx.stroke();
+        ctx.strokeStyle = T.dark ? rgba('#c9e3a8', 0.85 * left) : rgba('#3d5a2a', 0.8 * left);
+        ctx.lineWidth = 2.2 * Math.max(0.4, left); ctx.lineCap = 'round';
+        const dx = Math.cos(p.spin) * 2.6 * left, dy = Math.sin(p.spin) * 2.6 * left;
+        ctx.beginPath(); ctx.moveTo(p.x - dx, p.y - dy); ctx.lineTo(p.x + dx, p.y + dy); ctx.stroke();
+      } else if (p.type === 'nucleus') {
+        ctx.fillStyle = T.dark ? rgba('#9db2c6', 0.32) : rgba('#6d7c86', 0.28);
+        ctx.strokeStyle = T.dark ? rgba('#d6e4f0', 0.7) : rgba('#33403a', 0.6); ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.ellipse(p.x, p.y, p.r, p.r * 0.82, Math.atan2(p.vy, p.vx), 0, 7); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = T.dark ? rgba('#e8f0f6', 0.5) : rgba('#33403a', 0.45);
+        for (let k = 0; k < 5; k++) { ctx.beginPath(); ctx.arc(p.x + Math.cos(k * 1.3 + p.spin) * p.r * 0.5, p.y + Math.sin(k * 1.3 + p.spin) * p.r * 0.45, 0.9, 0, 7); ctx.fill(); }
+      } else if (p.type === 'cv') {
+        ctx.fillStyle = T.dark ? rgba('#000000', 0.4) : rgba('#ffffff', 0.75);
+        ctx.strokeStyle = T.dark ? rgba('#e6f2ff', 0.75) : rgba('#2c3a33', 0.55); ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 7); ctx.fill(); ctx.stroke();
+      }
+    }
+    ctx.restore();
+
+    // membrana: cor pela polaridade
+    const n = N.length;
+    ctx.lineWidth = 1.6 / Math.min(1.3, s); ctx.lineCap = 'round';
+    for (let i = 0; i < n; i++) {
+      const a = N[(i - 1 + n) % n], b = N[i], c = N[(i + 1) % n];
+      let col;
+      if (layers.pol && b.tip > 0.12) col = rgba(T.tip, 0.35 + 0.65 * b.tip);
+      else if (layers.pol && b.rear > 0.15) col = rgba(T.rear, 0.3 + 0.7 * Math.min(1, b.rear * 1.3));
+      else col = rgba(T.ink, T.dark ? 0.55 : 0.6);
+      ctx.strokeStyle = col;
+      ctx.beginPath(); ctx.moveTo((a.x + b.x) / 2, (a.y + b.y) / 2); ctx.quadraticCurveTo(b.x, b.y, (b.x + c.x) / 2, (b.y + c.y) / 2); ctx.stroke();
+    }
+
+    if (layers.anc) {
+      ctx.strokeStyle = rgba(T.accent, 0.55); ctx.fillStyle = T.accent; ctx.lineWidth = 0.8;
+      for (const nd of N) if (nd.anch) {
+        ctx.beginPath(); ctx.moveTo(nd.x, nd.y); ctx.lineTo(nd.ax, nd.ay); ctx.stroke();
+        ctx.fillRect(nd.ax - 1.6, nd.ay - 1.6, 3.2, 3.2);
+      }
+    }
+    if (layers.flow) {
+      ctx.strokeStyle = rgba(T.ink, 0.6); ctx.lineWidth = 0.9;
+      ctx.beginPath();
+      for (let i = 0; i < P.length; i += 3) {
+        const p = P[i]; if (p.gel > 0.5 || p.type === 'cv') continue;
+        const L = 16, ex = p.x + p.vx * L, ey = p.y + p.vy * L;
+        if (Math.hypot(p.vx, p.vy) < 0.03) continue;
+        ctx.moveTo(p.x, p.y); ctx.lineTo(ex, ey);
+        const a = Math.atan2(p.vy, p.vx);
+        ctx.moveTo(ex, ey); ctx.lineTo(ex - Math.cos(a - 0.5) * 3, ey - Math.sin(a - 0.5) * 3);
+        ctx.moveTo(ex, ey); ctx.lineTo(ex - Math.cos(a + 0.5) * 3, ey - Math.sin(a + 0.5) * 3);
+      }
+      ctx.stroke();
+    }
+    if (layers.pod) {
+      const c = am.metrics;
+      for (const k of am.pods) {
+        // seta na ponta de cada foco: grossa = braço, média = ramo, fina = lóbulo; magenta = recolhendo
+        const nd = k.node, L = (8 + 20 * k.amp) * [1, 0.7, 0.5][k.gen];
+        const ex = nd.x + Math.cos(k.dir) * L, ey = nd.y + Math.sin(k.dir) * L;
+        const col = k.phase === 'retract' ? T.rear : T.tip;
+        ctx.strokeStyle = rgba(col, 0.9); ctx.fillStyle = col; ctx.lineWidth = [2.4, 1.6, 1][k.gen];
+        ctx.beginPath(); ctx.moveTo(nd.x, nd.y); ctx.lineTo(ex, ey); ctx.stroke();
+        const a = k.dir;
+        ctx.beginPath(); ctx.moveTo(ex + Math.cos(a) * 3, ey + Math.sin(a) * 3);
+        ctx.lineTo(ex + Math.cos(a + 2.4) * 3, ey + Math.sin(a + 2.4) * 3); ctx.lineTo(ex + Math.cos(a - 2.4) * 3, ey + Math.sin(a - 2.4) * 3); ctx.fill();
+      }
+    }
+  }
+
+  /* ── leituras ── */
+  const fmt = (v, d) => v.toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d });
+  function readouts() {
+    const m = am.metrics;
+    $('rSpeed').innerHTML = fmt(m.speed, 2) + ' <small>px/passo</small>';
+    $('rRatio').innerHTML = m.speed > 0.03 && m.endoSpeed > 0 ? fmt(m.ratio, 1) + '<small>×</small>' : '—';
+    $('rClutch').innerHTML = fmt(m.clutch * 100, 0) + '<small>%</small>';
+    $('rAnch').textContent = m.anchors;
+    $('rPods').textContent = am.pods.length;
+    $('rCv').textContent = am.counts.systoles;
+    $('rEng').textContent = am.counts.engulfed + ' · ' + am.counts.digested;
+    $('rSense').innerHTML = fmt((am.metrics.sense || 0) * 100, 0) + '<small>%</small>';
+    let st, tx;
+    if (m.speed > 0.05) { st = 'go'; tx = 'Avançando'; }
+    else if (m.tipSpeed > 0.02) { st = 'spin'; tx = 'Deforma sem sair do lugar'; }
+    else { st = 'stop'; tx = 'Parada'; }
+    $('status').dataset.s = st; $('statusTxt').textContent = tx;
+  }
+
+  /* ── controles ── */
+  function outText(id) {
+    const v = val(id);
+    if (id === 'flowSpeed') return fmt(v, 2) + '×';
+    if (id === 'podW') return fmt(20 + 40 * v, 0) + ' px';
+    return fmt(v * 100, 0) + '%';
+  }
+  function syncControls() {
+    for (const id of SLIDERS) $('o-' + id).textContent = outText(id);
+    $('c-contraction').classList.toggle('off', inhib.bleb);
+    $('c-gelation').classList.toggle('off', inhib.cyto);
+    const chips = [];
+    if (inhib.bleb) chips.push('Blebistatina');
+    if (inhib.cyto) chips.push('Citocalasina D');
+    $('chips').innerHTML = chips.map(t => `<span class="chip">${t}</span>`).join('');
+    if (am) am.setParams(params());
+    updateJSON();
+  }
+  function updateJSON() {
+    const p = params(); const o = { seed };
+    for (const k in p) o[k] = p[k];
+    o.inibidores = { blebistatina: inhib.bleb, citocalasinaD: inhib.cyto };
+    $('json').textContent = JSON.stringify(o, null, 2);
+  }
+  for (const id of SLIDERS) $(id).addEventListener('input', syncControls);
+
+  function bindToggle(id, fn) {
+    $(id).addEventListener('click', () => {
+      const on = $(id).getAttribute('aria-pressed') !== 'true';
+      $(id).setAttribute('aria-pressed', on ? 'true' : 'false'); fn(on);
+    });
+  }
+  bindToggle('tBleb', on => { inhib.bleb = on; syncControls(); });
+  bindToggle('tCyto', on => { inhib.cyto = on; syncControls(); });
+  bindToggle('tPrey', on => { preyOn = on; if (on) seedPrey(am.metrics.cx, am.metrics.cy); });
+  bindToggle('tGrain', on => { grainOn = on; if (on) prey = prey.filter(q => !inGrain(q.x, q.y, 6)); });
+  $('btnClearSrc').addEventListener('click', () => { source = null; $('hint').textContent = HINT0; });
+
+  const LMAP = { lGel: 'gel', lPol: 'pol', lAnc: 'anc', lFlow: 'flow', lPod: 'pod', lAttr: 'attr' };
+  for (const id in LMAP) $(id).addEventListener('change', e => { layers[LMAP[id]] = e.target.checked; });
+
+  $('btnPlay').addEventListener('click', () => { running = !running; $('btnPlay').textContent = running ? 'Pausar' : 'Continuar'; });
+  for (const b of document.querySelectorAll('.seg button[data-sp]')) b.addEventListener('click', () => {
+    speed = +b.dataset.sp;
+    for (const o of document.querySelectorAll('.seg button[data-sp]')) o.setAttribute('aria-pressed', o === b ? 'true' : 'false');
+  });
+  // iluminação: campo claro (contraste de interferência) ou campo escuro, independente do tema do sistema
+  function syncTheme() {
+    const dark = T.dark;
+    $('thLight').setAttribute('aria-pressed', dark ? 'false' : 'true');
+    $('thDark').setAttribute('aria-pressed', dark ? 'true' : 'false');
+  }
+  for (const b of document.querySelectorAll('.seg button[data-th]')) b.addEventListener('click', () => {
+    document.documentElement.setAttribute('data-theme', b.dataset.th);
+  });
+  $('btnReset').addEventListener('click', reset);
+  $('btnSeed').addEventListener('click', () => { seed = Math.max(1, Math.round(val('seed')) || 1); $('seed').value = seed; reset(); });
+  $('btnCopy').addEventListener('click', () => {
+    const txt = $('json').textContent;
+    const ok = () => { $('copyMsg').textContent = 'Copiado'; setTimeout(() => $('copyMsg').textContent = '', 1800); };
+    const fallback = () => { const r = document.createRange(); r.selectNodeContents($('json')); const s = getSelection(); s.removeAllRanges(); s.addRange(r); $('copyMsg').textContent = 'Selecionado; use Ctrl+C'; };
+    try { navigator.clipboard.writeText(txt).then(ok, fallback); } catch (e) { fallback(); }
+  });
+
+  cv.addEventListener('pointerdown', e => {
+    const r = cv.getBoundingClientRect();
+    const x = (e.clientX - r.left - W / 2) / cam.s + cam.x, y = (e.clientY - r.top - H / 2) / cam.s + cam.y;
+    source = { x, y, age: 0 };
+    $('hint').textContent = 'Micropipeta colocada. O sinal se esgota sozinho em alguns segundos; toque em outro ponto para mudar.';
+  });
+
+  /* ── laço ── */
+  let frame = 0;
+  function loop() {
+    requestAnimationFrame(loop);
+    if (!W) resize();
+    if (running) for (let i = 0; i < speed; i++) simStep();
+    const m = am.metrics;
+    cam.x += (m.cx - cam.x) * 0.05; cam.y += (m.cy - cam.y) * 0.05;
+    draw();
+    if (frame++ % 10 === 0) readouts();
+  }
+
+  readTheme();
+  resize();
+  syncControls();
+  reset();
+  if (!running) $('btnPlay').textContent = 'Continuar';
+  readouts();
+  loop();
+})();
+</script>

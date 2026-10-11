@@ -1,0 +1,11 @@
+{
+  "appId": "br.ufpr.palotina.fixtec.amebasolgel",
+  "appName": "Ameba Sol-Gel",
+  "webDir": "www",
+  "backgroundColor": "#0b1016",
+  "android": {
+    "allowMixedContent": false,
+    "captureInput": false,
+    "webContentsDebuggingEnabled": false
+  }
+}
