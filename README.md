@@ -12,6 +12,10 @@ pseudópode (resposta relativa ao gradiente, lei de Weber).
 - **Android:** baixe `ameba-sol-gel.apk` na página [Releases](../../releases/latest) e abra o
   arquivo no celular. O Android pede para permitir a instalação de apps desta fonte.
   Versões novas instalam por cima da anterior.
+- **Proteção de tela (Android):** depois de instalar o APK, vá em *Configurações → Tela →
+  Proteção de tela* e escolha **Ameba Sol-Gel**. Ela liga enquanto o celular carrega (ou na base,
+  conforme o ajuste do aparelho) e usa a iluminação e os parâmetros escolhidos no menu do app.
+  O botão de configurações da proteção de tela abre o app.
 - **Navegador (qualquer celular, inclusive iPhone):** abra
   `https://marcoantoniobarreiros.github.io/amebasim/` e use "Adicionar à tela inicial".
   Depois da primeira visita funciona sem internet.

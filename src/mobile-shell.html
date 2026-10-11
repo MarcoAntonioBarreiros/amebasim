@@ -77,6 +77,8 @@ button, input { font: inherit; color: inherit; }
   opacity: 0; transition: opacity 0.5s ease;
 }
 .toast.on { opacity: 1; }
+/* modo proteção de tela: só a simulação */
+.saver .fab, .saver .toast, .saver .menu { display: none !important; }
 
 /* ── menu de pausa ── */
 .menu { position: fixed; inset: 0; z-index: 10; display: flex; align-items: flex-end; justify-content: center; background: var(--scrim); }
@@ -208,6 +210,7 @@ pre#json {
           <li>Toque no campo: coloca uma micropipeta com atraente. O sinal se esgota sozinho.</li>
           <li>Pinça com dois dedos: zoom. A câmera acompanha a ameba.</li>
           <li>Botão voltar ou botão no canto: abre este menu.</li>
+          <li id="howtoSaver" hidden>Proteção de tela: em Configurações → Tela → Proteção de tela, escolha Ameba Sol-Gel. Ela usa a iluminação e os parâmetros escolhidos aqui.</li>
         </ul>
       </section>
 

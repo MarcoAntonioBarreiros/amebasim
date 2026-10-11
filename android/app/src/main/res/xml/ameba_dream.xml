@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- "Configurações" da proteção de tela abre o app, onde ficam todos os controles -->
+<dream xmlns:android="http://schemas.android.com/apk/res/android"
+    android:settingsActivity="br.ufpr.palotina.fixtec.amebasolgel/br.ufpr.palotina.fixtec.amebasolgel.MainActivity" />

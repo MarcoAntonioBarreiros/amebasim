@@ -49,6 +49,10 @@ rep("""    const m = am.metrics;
 
 APP = r"""
   /* ── app: menu de pausa, gestos, botão voltar, tela ligada, preferências ── */
+  // modo proteção de tela (aberto pelo serviço do Android): só a simulação, sem interface
+  const SAVER = /[?&]modo=protecao\b/.test(location.search);
+  if (SAVER) document.documentElement.classList.add('saver');
+  if (window.Capacitor && !SAVER) { const li = document.getElementById('howtoSaver'); if (li) li.hidden = false; }
   const menu = $('menu'), fab = $('btnMenu');
   let menuOpen = false;
   let idleT, toastT, wake = null;
@@ -76,14 +80,16 @@ APP = r"""
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' || e.key === ' ' && !menuOpen) { e.preventDefault(); menuOpen ? closeMenu() : openMenu(); }
   });
-  // botão voltar do Android: abre/fecha o menu em vez de sair
-  try { history.pushState({ ameba: 1 }, ''); } catch (e) {}
-  window.addEventListener('popstate', () => {
-    menuOpen ? closeMenu() : openMenu();
+  if (!SAVER) {
+    // botão voltar do Android: abre/fecha o menu em vez de sair
     try { history.pushState({ ameba: 1 }, ''); } catch (e) {}
-  });
-  // app em segundo plano: pausa (economiza bateria) e volta no menu
-  document.addEventListener('visibilitychange', () => { if (document.hidden) openMenu(); });
+    window.addEventListener('popstate', () => {
+      menuOpen ? closeMenu() : openMenu();
+      try { history.pushState({ ameba: 1 }, ''); } catch (e) {}
+    });
+    // app em segundo plano: pausa (economiza bateria) e volta no menu
+    document.addEventListener('visibilitychange', () => { if (document.hidden) openMenu(); });
+  }
 
   // gestos: toque curto = micropipeta; pinça = zoom; roda do mouse = zoom
   const clampZ = z => Math.max(0.5, Math.min(3, z));
@@ -146,7 +152,7 @@ APP = r"""
   menu.addEventListener('change', saveState);
   menu.addEventListener('click', () => setTimeout(saveState, 0));
   loadState();
-  wakeFab(); toast(null, 5200); requestWake();
+  if (!SAVER) { wakeFab(); toast(null, 5200); requestWake(); }
 """
 rep("\n  readTheme();\n  resize();\n  syncControls();\n  reset();\n  if (!running) $('btnPlay').textContent = 'Continuar';\n  readouts();\n  loop();",
     APP + "\n  readTheme();\n  resize();\n  syncControls();\n  reset();\n  readouts();\n  loop();")

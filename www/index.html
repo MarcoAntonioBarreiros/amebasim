@@ -83,6 +83,8 @@ button, input { font: inherit; color: inherit; }
   opacity: 0; transition: opacity 0.5s ease;
 }
 .toast.on { opacity: 1; }
+/* modo proteção de tela: só a simulação */
+.saver .fab, .saver .toast, .saver .menu { display: none !important; }
 
 /* ── menu de pausa ── */
 .menu { position: fixed; inset: 0; z-index: 10; display: flex; align-items: flex-end; justify-content: center; background: var(--scrim); }
@@ -214,6 +216,7 @@ pre#json {
           <li>Toque no campo: coloca uma micropipeta com atraente. O sinal se esgota sozinho.</li>
           <li>Pinça com dois dedos: zoom. A câmera acompanha a ameba.</li>
           <li>Botão voltar ou botão no canto: abre este menu.</li>
+          <li id="howtoSaver" hidden>Proteção de tela: em Configurações → Tela → Proteção de tela, escolha Ameba Sol-Gel. Ela usa a iluminação e os parâmetros escolhidos aqui.</li>
         </ul>
       </section>
 
@@ -1648,6 +1651,10 @@ pre#json {
   }
 
   /* ── app: menu de pausa, gestos, botão voltar, tela ligada, preferências ── */
+  // modo proteção de tela (aberto pelo serviço do Android): só a simulação, sem interface
+  const SAVER = /[?&]modo=protecao\b/.test(location.search);
+  if (SAVER) document.documentElement.classList.add('saver');
+  if (window.Capacitor && !SAVER) { const li = document.getElementById('howtoSaver'); if (li) li.hidden = false; }
   const menu = $('menu'), fab = $('btnMenu');
   let menuOpen = false;
   let idleT, toastT, wake = null;
@@ -1675,14 +1682,16 @@ pre#json {
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' || e.key === ' ' && !menuOpen) { e.preventDefault(); menuOpen ? closeMenu() : openMenu(); }
   });
-  // botão voltar do Android: abre/fecha o menu em vez de sair
-  try { history.pushState({ ameba: 1 }, ''); } catch (e) {}
-  window.addEventListener('popstate', () => {
-    menuOpen ? closeMenu() : openMenu();
+  if (!SAVER) {
+    // botão voltar do Android: abre/fecha o menu em vez de sair
     try { history.pushState({ ameba: 1 }, ''); } catch (e) {}
-  });
-  // app em segundo plano: pausa (economiza bateria) e volta no menu
-  document.addEventListener('visibilitychange', () => { if (document.hidden) openMenu(); });
+    window.addEventListener('popstate', () => {
+      menuOpen ? closeMenu() : openMenu();
+      try { history.pushState({ ameba: 1 }, ''); } catch (e) {}
+    });
+    // app em segundo plano: pausa (economiza bateria) e volta no menu
+    document.addEventListener('visibilitychange', () => { if (document.hidden) openMenu(); });
+  }
 
   // gestos: toque curto = micropipeta; pinça = zoom; roda do mouse = zoom
   const clampZ = z => Math.max(0.5, Math.min(3, z));
@@ -1745,7 +1754,7 @@ pre#json {
   menu.addEventListener('change', saveState);
   menu.addEventListener('click', () => setTimeout(saveState, 0));
   loadState();
-  wakeFab(); toast(null, 5200); requestWake();
+  if (!SAVER) { wakeFab(); toast(null, 5200); requestWake(); }
 
   readTheme();
   resize();
